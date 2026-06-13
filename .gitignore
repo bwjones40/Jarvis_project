@@ -1,0 +1,44 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local environment and secrets
+.env
+.env.*
+*.secret
+*.secrets
+secrets.yml
+config/local.settings.yaml
+
+# OS and editor artifacts
+.DS_Store
+Thumbs.db
+*.tmp
+*.log
+
+# Local test and scratch artifacts
+.tmp-tests/
+jarvis/run-errors.log
+
+# Generated vault output should stay local/remote system managed
+jarvis/tasks/
+jarvis/digests/
+jarvis/agents/
+jarvis/knowledge/
+jarvis/test.md
+
+# Coverage and build artifacts
+.coverage
+coverage.xml
+htmlcov/
+dist/
+build/
