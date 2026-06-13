@@ -1,0 +1,101 @@
+name: jarvis
+
+on:
+  push:
+    paths:
+      - jarvis/inbox.md
+  schedule:
+    - cron: "0 23 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run-jarvis:
+    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[jarvis-skip]') }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+
+      - name: Validate Anthropic connectivity
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python - <<'PY'
+          import os
+          import requests
+
+          api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+          if not api_key:
+              raise SystemExit("ANTHROPIC_API_KEY is not set. Add the secret in GitHub Actions before rerunning.")
+
+          try:
+              response = requests.get("https://api.anthropic.com", timeout=10)
+          except requests.RequestException as exc:
+              raise SystemExit(f"Anthropic connectivity check failed: {exc}")
+
+          print(f"Anthropic reachability check returned HTTP {response.status_code}.")
+          PY
+
+      - name: Run Jarvis
+        env:
+          POWER_AUTOMATE_WEBHOOK_URL: ${{ secrets.POWER_AUTOMATE_WEBHOOK_URL }}
+        run: python orchestrator/main.py
+
+      - name: Commit cleared inbox
+        run: |
+          if git diff --quiet -- jarvis/inbox.md; then
+            echo "Inbox unchanged; nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add jarvis/inbox.md
+          git commit -m "jarvis: clear inbox after run [jarvis-skip]"
+          git push
+
+      - name: Power Automate smoke test
+        if: ${{ secrets.POWER_AUTOMATE_WEBHOOK_URL != '' }}
+        env:
+          POWER_AUTOMATE_WEBHOOK_URL: ${{ secrets.POWER_AUTOMATE_WEBHOOK_URL }}
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          repo_root = Path.cwd()
+          sys.path.insert(0, str(repo_root))
+
+          from orchestrator.utils.power_automate import post_files
+
+          timestamp = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+          payload = [
+              {
+                  "vault_path": "jarvis/test.md",
+                  "content": f"# PA Test\n\nSmoke test completed at {timestamp}."
+              }
+          ]
+          metadata = {
+              "task_id": "smoke-test",
+              "run_timestamp": timestamp,
+              "total_files": 1,
+          }
+          ok = post_files(payload, metadata, os.environ["POWER_AUTOMATE_WEBHOOK_URL"])
+          if ok:
+              print("Power Automate smoke test succeeded.")
+          else:
+              print("WARNING: Power Automate smoke test failed.")
+          PY

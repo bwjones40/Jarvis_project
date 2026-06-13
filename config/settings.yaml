@@ -1,0 +1,26 @@
+models:
+  orchestrator: claude-sonnet-4-6
+  subagent: claude-haiku-4-5
+
+timeouts:
+  orchestrator_seconds: 120
+  research_seconds: 90
+  gcp_discovery_seconds: 90
+  obsidian_writer_seconds: 120
+  power_automate_seconds: 30
+
+vault:
+  root: jarvis
+  knowledge_dir: jarvis/knowledge
+  tasks_dir: jarvis/tasks
+  digests_dir: jarvis/digests
+  lessons_dir: jarvis/agents
+
+power_automate:
+  # TODO: operator must set sharepoint_site_url before first run
+  sharepoint_site_url: ""
+  document_library: ""
+
+research:
+  max_context_notes: 3
+  cache_hit_threshold: 0.8

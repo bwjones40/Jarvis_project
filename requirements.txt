@@ -1,0 +1,4 @@
+anthropic
+google-cloud-bigquery
+requests
+pyyaml
