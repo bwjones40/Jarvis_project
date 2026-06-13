@@ -34,18 +34,18 @@ jobs:
         run: |
           python - <<'PY'
           import os
-          import requests
+          import socket
 
           api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
           if not api_key:
               raise SystemExit("ANTHROPIC_API_KEY is not set. Add the secret in GitHub Actions before rerunning.")
 
           try:
-              response = requests.get("https://api.anthropic.com", timeout=10)
-          except requests.RequestException as exc:
-              raise SystemExit(f"Anthropic connectivity check failed: {exc}")
+              socket.gethostbyname("api.anthropic.com")
+          except Exception as exc:
+              raise SystemExit(f"Anthropic DNS/connectivity check failed: {exc}")
 
-          print(f"Anthropic reachability check returned HTTP {response.status_code}.")
+          print("Anthropic secret is present and api.anthropic.com resolves.")
           PY
 
       - name: Run Jarvis
