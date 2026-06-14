@@ -5,7 +5,7 @@ on:
     paths:
       - jarvis/inbox.md
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "0 23 * * 1-5"
   workflow_dispatch:
 
 permissions:
