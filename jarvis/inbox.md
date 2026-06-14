@@ -1,19 +1,15 @@
+@
 # Jarvis Inbox
 
-## Task: Replace this title before commit
-**Priority**: medium
+##Task: Test overnight run
+
+**Priority**: Low
 **Mode**: overnight
 **Agents needed**: orchestrator, research, obsidian
 **Due**: next run
 
-### Request
-Describe the task Jarvis should complete before the next run.
+## Request
+Summarize what you know about the Jarvis system from the vault
 
-### Context
-Optional project context, links, or non-PII background.
-
-### Copilot handoff
-Optional manual handoff instructions for Copilot.
-
----
-_Clear this file after each run. Jarvis archives completed tasks to jarvis/tasks/_
+Write a brief paragraph in English.
+@
