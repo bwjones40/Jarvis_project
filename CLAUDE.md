@@ -1,9 +1,9 @@
 # Jarvis MVP — Agent Context
 
 <!-- SPECKIT START -->
-**Active feature plan**: [specs/001-jarvis-mvp/plan.md](specs/001-jarvis-mvp/plan.md)
-**Spec**: [specs/001-jarvis-mvp/spec.md](specs/001-jarvis-mvp/spec.md)
-**Feature directory**: `specs/001-jarvis-mvp/`
+**Active feature plan**: [specs/003-phase2-agent-ecosystem/plan.md](specs/003-phase2-agent-ecosystem/plan.md)
+**Spec**: [specs/003-phase2-agent-ecosystem/spec.md](specs/003-phase2-agent-ecosystem/spec.md)
+**Feature directory**: `specs/003-phase2-agent-ecosystem/`
 <!-- SPECKIT END -->
 
 ## Project Overview

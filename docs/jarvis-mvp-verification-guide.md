@@ -16,6 +16,7 @@ Confirm that:
 4. Draft communication safety rules are enforced.
 5. PII handling rules are enforced.
 6. The nightly digest path works.
+7. Phase 4-6 outputs are regression-safe: vault payload batching, lesson appends, daytime GCP discovery, context pruning, and token/cost reporting.
 
 ---
 
@@ -346,7 +347,121 @@ Record evidence:
 
 ---
 
-## Section 7: Final Sign-Off Checklist
+## Section 7: Validate Phase 4-6 Implementation
+
+Run this section after Sections 1 and 2 are complete. It is the first validation pass for the new Phase 4-6 work.
+
+### Step 7.1: Run Local Regression Tests
+
+From the repo root, run:
+
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'
+python -m unittest discover -s tests
+```
+
+Expected result:
+
+- All tests pass.
+- Test count includes the Phase 4-6 regression tests.
+- No `__pycache__` files are modified by the test run.
+
+Record evidence:
+
+- Terminal output showing `OK`.
+- `git status --short` output after the test run.
+
+### Step 7.2: Confirm Phase 4 Vault Output Payloads
+
+Run the primary overnight flow from Section 3, then inspect the created task file and digest.
+
+Confirm the task file includes:
+
+- `## Token Usage`
+- `## Knowledge Updates`
+- `## Draft Communications`
+- Lesson file paths such as `jarvis/agents/orchestrator-lessons.md`
+- The Obsidian writer lesson file path, `jarvis/agents/obsidian-lessons.md`
+
+Confirm the Power Automate run history shows one webhook request whose body contains a `files` array with multiple vault files.
+
+Pass criteria:
+
+- Task record, digest, and lesson files are sent in one webhook payload.
+- The inbox is cleared only after the webhook succeeds.
+- `jarvis/run-errors.log` is written locally if webhook posting fails after retries.
+
+Record evidence:
+
+- Screenshot of task file sections.
+- Screenshot of Power Automate run body showing the `files` array.
+- Screenshot or note confirming no `jarvis/run-errors.log` exists after a successful run.
+
+### Step 7.3: Confirm Phase 5 Daytime GCP Guard
+
+Before setting `config/settings.yaml -> gcp.project`, run:
+
+```powershell
+python orchestrator/main.py --task "List all BigQuery datasets in the non-prod environment"
+```
+
+Expected result:
+
+- The run does not crash.
+- The output says `GCP discovery needs settings.gcp.project before it can run.`
+- The status is `needs_clarification`.
+
+After setting `gcp.project` to a readable BigQuery project and confirming local `gcloud auth` / `bq` access, rerun the same command.
+
+Expected result:
+
+- The output lists visible dataset names and table names.
+- The output says no data was modified.
+- The output does not include raw SQL, schema JSON, or field-level details.
+
+Pass criteria:
+
+- Overnight mode skips GCP with `GCP agent skipped: overnight mode, service account not provisioned`.
+- Daytime mode uses read-only `bq` metadata commands only.
+- No raw data or PII appears in the output.
+
+Record evidence:
+
+- Terminal output from the missing-project guard run.
+- Terminal output from the successful daytime run, if `bq` access is available.
+- `bq auth list` or equivalent evidence showing operator-auth context, if needed for audit.
+
+### Step 7.4: Confirm Phase 6 Token and Cost Reporting
+
+Inspect the task file and digest from the validation run.
+
+Confirm the task file includes:
+
+- A row for each executed agent.
+- A `Total` row.
+- `Estimated cost`.
+
+Confirm the digest includes:
+
+- `## Usage`
+- `## Weekly Cost Rollup`
+- `Last 7 days estimated cost`
+- `Task records counted`
+
+Pass criteria:
+
+- Each task record can be used to determine estimated cost within 60 seconds.
+- The digest includes a weekly rollup without needing a database.
+- Research cache-hit output is capped by `research.max_tokens_per_note`.
+
+Record evidence:
+
+- Screenshot of task token table.
+- Screenshot of digest weekly cost rollup.
+
+---
+
+## Section 8: Final Sign-Off Checklist
 
 Mark each item complete only after evidence is collected.
 
@@ -356,6 +471,7 @@ Mark each item complete only after evidence is collected.
 - [ ] Section 4 complete: Draft communication safety verified
 - [ ] Section 5 complete: PII guard verified
 - [ ] Section 6 complete: Nightly digest cron behavior verified
+- [ ] Section 7 complete: Phase 4-6 implementation verified
 
 ---
 
@@ -373,6 +489,7 @@ verification-evidence/
   section-4-draft-safety/
   section-5-pii-guard/
   section-6-nightly-digest/
+  section-7-phase-4-6/
 ```
 
 ---

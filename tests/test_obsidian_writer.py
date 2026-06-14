@@ -149,6 +149,75 @@ class ObsidianWriterTests(unittest.TestCase):
         self.assertIn("[REDACTED_NAME]", task_file["content"])
         self.assertIn("[REDACTED_EMAIL]", task_file["content"])
 
+    def test_task_record_lists_lesson_and_knowledge_outputs(self) -> None:
+        task_result = {
+            "task_id": "task-001-knowledge-update",
+            "task_title": "Knowledge update",
+            "run_timestamp": "2026-06-13T00:00:00Z",
+            "mode": "overnight",
+            "status": "completed",
+            "agents_executed": [
+                {
+                    "agent_name": "orchestrator",
+                    "model": "claude-sonnet-4-6",
+                    "input_tokens": 1_000,
+                    "output_tokens": 500,
+                    "duration_seconds": 1.0,
+                    "output": {"plan": "Route to obsidian"},
+                    "errors": [],
+                }
+            ],
+            "output_summary": "Updated the evergreen note.",
+            "draft_communications": [],
+            "clarifications_needed": [],
+            "knowledge_updates": ["jarvis/knowledge/gcp/datasets.md"],
+        }
+
+        outputs = build_vault_outputs(
+            task_result=task_result,
+            task={"request": "Update the GCP dataset note."},
+            settings={"models": {"subagent": "claude-haiku-4-5"}, "vault": {"digests_dir": "jarvis/digests", "tasks_dir": "jarvis/tasks", "lessons_dir": "jarvis/agents"}},
+        )
+
+        task_file = next(item for item in outputs if item["vault_path"] == "jarvis/tasks/task-001-knowledge-update.md")
+        self.assertIn("- jarvis/agents/orchestrator-lessons.md", task_file["content"])
+        self.assertIn("- jarvis/agents/obsidian-lessons.md", task_file["content"])
+        self.assertIn("- jarvis/knowledge/gcp/datasets.md", task_file["content"])
+
+    def test_digest_includes_weekly_cost_rollup_heading(self) -> None:
+        task_result = {
+            "task_id": "task-001-cost-rollup",
+            "task_title": "Cost rollup",
+            "run_timestamp": "2026-06-13T00:00:00Z",
+            "mode": "overnight",
+            "status": "completed",
+            "agents_executed": [
+                {
+                    "agent_name": "orchestrator",
+                    "model": "claude-sonnet-4-6",
+                    "input_tokens": 1_000,
+                    "output_tokens": 500,
+                    "duration_seconds": 1.0,
+                    "output": {},
+                    "errors": [],
+                }
+            ],
+            "output_summary": "Cost rollup produced.",
+            "draft_communications": [],
+            "clarifications_needed": [],
+            "knowledge_updates": [],
+        }
+
+        outputs = build_vault_outputs(
+            task_result=task_result,
+            task={"request": "Summarize costs."},
+            settings={"models": {"subagent": "claude-haiku-4-5"}, "vault": {"digests_dir": "jarvis/digests", "tasks_dir": "jarvis/tasks", "lessons_dir": "jarvis/agents"}},
+        )
+
+        digest = next(item for item in outputs if item["vault_path"].startswith("jarvis/digests/"))
+        self.assertIn("## Weekly Cost Rollup", digest["content"])
+        self.assertIn("Last 7 days estimated cost", digest["content"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -17,6 +17,7 @@ if str(REPO_ROOT) not in sys.path:
 import yaml
 
 from orchestrator.agents.obsidian_writer import build_vault_outputs
+from orchestrator.agents.gcp_discovery import run_gcp_discovery
 from orchestrator.agents.orchestrator import run_orchestrator
 from orchestrator.agents.research import run_research
 from orchestrator.utils.inbox_parser import InboxParseError, parse_inbox
@@ -26,7 +27,8 @@ from orchestrator.utils.vault_reader import search_notes
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Jarvis orchestrator entry point")
-    parser.add_argument("--mode", choices=["overnight", "daytime"], default="overnight")
+    parser.add_argument("--mode", choices=["overnight", "daytime"], default=None)
+    parser.add_argument("--task", help="Run a one-off daytime task without reading jarvis/inbox.md.")
     parser.add_argument("--dry-run", action="store_true", help="Skip API calls and webhook posting.")
     parser.add_argument("--repo-root", default=".", help="Repository root path.")
     return parser
@@ -37,16 +39,19 @@ def main(argv: list[str] | None = None) -> int:
     repo_root = Path(args.repo_root).resolve()
 
     settings = load_settings(repo_root / "config" / "settings.yaml")
-    inbox_path = repo_root / "jarvis" / "inbox.md"
-    if not inbox_path.exists():
-        print("Inbox file not found: jarvis/inbox.md")
-        return 1
+    if args.task:
+        task = _build_direct_task(args.task, args.mode or "daytime")
+    else:
+        inbox_path = repo_root / "jarvis" / "inbox.md"
+        if not inbox_path.exists():
+            print("Inbox file not found: jarvis/inbox.md")
+            return 1
 
-    try:
-        task = parse_inbox(inbox_path)
-    except InboxParseError as exc:
-        print(f"Failed to parse inbox: {exc}")
-        return 1
+        try:
+            task = parse_inbox(inbox_path)
+        except InboxParseError as exc:
+            print(f"Failed to parse inbox: {exc}")
+            return 1
 
     if task is None:
         if args.dry_run:
@@ -67,10 +72,12 @@ def main(argv: list[str] | None = None) -> int:
     task_result = run_orchestrator(task, notes, settings)
     if "research" in task_result["routing"]["agents_to_run"]:
         task_result = run_research(task_result, settings, vault_root)
+    if "gcp" in task_result["routing"]["agents_to_run"]:
+        task_result = run_gcp_discovery(task_result, settings)
 
     outputs = build_vault_outputs(task_result=task_result, task=task, settings=settings, vault_root=str(repo_root))
     posted = _maybe_post_outputs(outputs)
-    if posted:
+    if posted and not args.task:
         (repo_root / "jarvis" / "inbox.md").write_text(_inbox_template(), encoding="utf-8")
     print(json.dumps(task_result, indent=2))
     return 0
@@ -81,6 +88,19 @@ def load_settings(settings_path: Path) -> dict[str, Any]:
         return {}
     data = yaml.safe_load(settings_path.read_text(encoding="utf-8"))
     return data if isinstance(data, dict) else {}
+
+
+def _build_direct_task(request: str, mode: str) -> dict[str, Any]:
+    return {
+        "title": "Daytime GCP discovery",
+        "priority": "medium",
+        "mode": mode,
+        "agents_needed": ["orchestrator", "gcp", "obsidian"],
+        "due": "manual run",
+        "request": request,
+        "context": "",
+        "copilot_handoff": "",
+    }
 
 
 def _maybe_post_outputs(outputs: list[dict[str, str]]) -> bool:

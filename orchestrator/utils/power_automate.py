@@ -27,12 +27,20 @@ def post_files(
     last_error = ""
 
     for attempt in range(1, 4):
-        response = requests.post(
-            webhook_url,
-            json=payload,
-            headers={"Content-Type": "application/json"},
-            timeout=timeout_seconds,
-        )
+        try:
+            response = requests.post(
+                webhook_url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=timeout_seconds,
+            )
+        except requests.RequestException as exc:
+            last_error = f"Attempt {attempt} failed with network error: {exc}"
+            if attempt == 3:
+                break
+            time.sleep(30)
+            continue
+
         if response.status_code == 200:
             return True
 

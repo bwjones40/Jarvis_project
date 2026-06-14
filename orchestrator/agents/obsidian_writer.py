@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import re
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -40,7 +42,7 @@ def build_vault_outputs(
         )
     )
 
-    lesson_files = _build_lesson_files(task_result, vault_settings.get("lessons_dir", "jarvis/agents"))
+    lesson_files = _build_lesson_files(task_result, vault_settings.get("lessons_dir", "jarvis/agents"), vault_root)
     knowledge_files = _build_knowledge_updates(task_result, vault_root)
     task_result["knowledge_updates"] = [
         task_file_path,
@@ -48,7 +50,11 @@ def build_vault_outputs(
         *(item["vault_path"] for item in knowledge_files),
     ]
     task_markdown = _build_task_record(task_result, task or {})
-    digest_markdown = _build_digest(task_result)
+    digest_markdown = _build_digest(
+        task_result,
+        vault_root=vault_root,
+        tasks_dir=vault_settings.get("tasks_dir", "jarvis/tasks"),
+    )
     outputs = [
         {
             "vault_path": task_file_path,
@@ -114,10 +120,11 @@ def _build_task_record(task_result: dict[str, Any], task: dict[str, Any]) -> str
     )
 
 
-def _build_digest(task_result: dict[str, Any]) -> str:
+def _build_digest(task_result: dict[str, Any], vault_root: str, tasks_dir: str) -> str:
     total_input = sum(run["input_tokens"] for run in task_result["agents_executed"])
     total_output = sum(run["output_tokens"] for run in task_result["agents_executed"])
     estimated_cost = calculate_cost(task_result["agents_executed"])
+    weekly_rollup = _build_weekly_rollup(task_result, vault_root, tasks_dir)
     drafts = task_result["draft_communications"]
     draft_lines = [f"- {draft['channel']}: pending approval" for draft in drafts] or ["- (none)"]
     open_questions = [f"- {item}" for item in task_result["clarifications_needed"]] or ["- (none)"]
@@ -136,6 +143,13 @@ def _build_digest(task_result: dict[str, Any]) -> str:
             f"- Input tokens: {total_input}",
             f"- Output tokens: {total_output}",
             f"- Estimated cost: ${estimated_cost:.2f}",
+            "",
+            "## Weekly Cost Rollup",
+            "",
+            f"- Last 7 days estimated cost: ${weekly_rollup['estimated_cost']:.2f}",
+            f"- Last 7 days input tokens: {weekly_rollup['input_tokens']}",
+            f"- Last 7 days output tokens: {weekly_rollup['output_tokens']}",
+            f"- Task records counted: {weekly_rollup['task_count']}",
             "",
             "## Knowledge Notes Updated",
             "",
@@ -168,11 +182,61 @@ def _build_empty_digest() -> str:
     )
 
 
-def _build_lesson_files(task_result: dict[str, Any], lessons_dir: str) -> list[dict[str, str]]:
+def _build_weekly_rollup(task_result: dict[str, Any], vault_root: str, tasks_dir: str) -> dict[str, Any]:
+    cutoff = datetime.now(timezone.utc).date() - timedelta(days=6)
+    input_tokens = sum(run["input_tokens"] for run in task_result["agents_executed"])
+    output_tokens = sum(run["output_tokens"] for run in task_result["agents_executed"])
+    estimated_cost = calculate_cost(task_result["agents_executed"])
+    task_count = 1
+
+    root = Path(vault_root)
+    tasks_path = root / tasks_dir if not Path(tasks_dir).is_absolute() else Path(tasks_dir)
+    if tasks_path.exists():
+        for path in tasks_path.glob("task-*.md"):
+            content = path.read_text(encoding="utf-8")
+            run_date = _extract_run_date(content)
+            if run_date is None or run_date < cutoff:
+                continue
+            totals = _extract_token_totals(content)
+            input_tokens += totals["input_tokens"]
+            output_tokens += totals["output_tokens"]
+            estimated_cost += _extract_estimated_cost(content)
+            task_count += 1
+
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "estimated_cost": estimated_cost,
+        "task_count": task_count,
+    }
+
+
+def _extract_run_date(content: str) -> Any:
+    match = re.search(r"^\*\*Run\*\*:\s*(\d{4}-\d{2}-\d{2})", content, flags=re.MULTILINE)
+    if not match:
+        return None
+    return datetime.fromisoformat(match.group(1)).date()
+
+
+def _extract_token_totals(content: str) -> dict[str, int]:
+    match = re.search(r"\| \*\*Total\*\* \|  \| \*\*(\d+)\*\* \| \*\*(\d+)\*\*", content)
+    if not match:
+        return {"input_tokens": 0, "output_tokens": 0}
+    return {"input_tokens": int(match.group(1)), "output_tokens": int(match.group(2))}
+
+
+def _extract_estimated_cost(content: str) -> float:
+    match = re.search(r"\*\*Estimated cost\*\*:\s*\$(\d+(?:\.\d+)?)", content)
+    return float(match.group(1)) if match else 0.0
+
+
+def _build_lesson_files(task_result: dict[str, Any], lessons_dir: str, vault_root: str) -> list[dict[str, str]]:
     outputs: list[dict[str, str]] = []
     run_date = task_result["run_timestamp"][:10]
     for run in task_result["agents_executed"]:
-        content = "\n".join(
+        vault_path = f"{lessons_dir}/{run['agent_name']}-lessons.md"
+        current = read_note(vault_path, vault_root).rstrip() if note_exists(vault_path, vault_root) else ""
+        entry = "\n".join(
             [
                 f"## {run_date} — {task_result['task_id']}",
                 f"- What failed: {'; '.join(run['errors']) if run['errors'] else 'nothing'}",
@@ -182,7 +246,8 @@ def _build_lesson_files(task_result: dict[str, Any], lessons_dir: str) -> list[d
                 "",
             ]
         )
-        outputs.append({"vault_path": f"{lessons_dir}/{run['agent_name']}-lessons.md", "content": content})
+        content = f"{current}\n\n{entry}" if current else entry
+        outputs.append({"vault_path": vault_path, "content": content})
     return outputs
 
 

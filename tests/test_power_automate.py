@@ -4,6 +4,8 @@ from unittest.mock import Mock, patch
 from uuid import uuid4
 import shutil
 
+import requests
+
 from orchestrator.utils.power_automate import post_files
 
 
@@ -59,6 +61,28 @@ class PowerAutomateTests(unittest.TestCase):
 
         self.assertFalse(result)
         self.assertIn("server error", log_path.read_text(encoding="utf-8"))
+
+    def test_network_errors_are_retried_and_logged_without_crashing(self) -> None:
+        temp_dir = TEST_ROOT / f"power-automate-{uuid4().hex}"
+        temp_dir.mkdir(parents=True, exist_ok=False)
+        self.addCleanup(lambda: shutil.rmtree(temp_dir, ignore_errors=True))
+        log_path = temp_dir / "jarvis" / "run-errors.log"
+
+        with patch(
+            "orchestrator.utils.power_automate.requests.post",
+            side_effect=requests.RequestException("connection reset"),
+        ) as post_mock, patch("orchestrator.utils.power_automate.time.sleep") as sleep_mock:
+            result = post_files(
+                files=[{"vault_path": "jarvis/test.md", "content": "# Test"}],
+                run_metadata={"task_id": "task-001-test", "run_timestamp": "2026-06-13T00:00:00Z", "total_files": 1},
+                webhook_url="https://example.test/webhook",
+                error_log_path=log_path,
+            )
+
+        self.assertFalse(result)
+        self.assertEqual(post_mock.call_count, 3)
+        self.assertEqual(sleep_mock.call_count, 2)
+        self.assertIn("connection reset", log_path.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

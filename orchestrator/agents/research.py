@@ -18,10 +18,12 @@ def run_research(
     start = perf_counter()
     task = task_result["task"]
     notes = search_notes(task["request"], vault_root, max_results=settings.get("research", {}).get("max_context_notes", 3))
-    threshold = settings.get("research", {}).get("cache_hit_threshold", 0.8)
+    research_settings = settings.get("research", {})
+    threshold = research_settings.get("cache_hit_threshold", 0.8)
+    max_tokens_per_note = int(research_settings.get("max_tokens_per_note", 2000))
 
     if notes and notes[0]["score"] >= threshold:
-        summary = sanitize_text(notes[0]["content"])
+        summary = _cap_note_content(sanitize_text(notes[0]["content"]), max_tokens_per_note)
         usage = type("Usage", (), {"input_tokens": 0, "output_tokens": 0})()
         output = {
             "context_summary": summary,
@@ -52,3 +54,10 @@ def run_research(
     if output["context_summary"] and task_result["status"] == "completed":
         task_result["output_summary"] = "Vault context retrieved and summarized."
     return task_result
+
+
+def _cap_note_content(content: str, max_tokens: int) -> str:
+    words = content.split()
+    if max_tokens <= 0 or len(words) <= max_tokens:
+        return content
+    return " ".join(words[:max_tokens]) + "\n\n[Context truncated to configured note token cap.]"

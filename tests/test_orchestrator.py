@@ -6,8 +6,10 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from uuid import uuid4
 import shutil
+from unittest.mock import patch
 
 from orchestrator.main import main
+from orchestrator.agents.research import run_research
 from orchestrator.agents.orchestrator import run_orchestrator
 from orchestrator.utils.token_logger import calculate_cost, log_agent_run
 
@@ -95,6 +97,28 @@ class MainAndTokenLoggerTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(stdout.getvalue().strip(), "No task in inbox")
+
+    def test_direct_task_runs_daytime_gcp_discovery(self) -> None:
+        stdout = io.StringIO()
+
+        with patch("orchestrator.main.run_gcp_discovery") as gcp_mock, patch(
+            "orchestrator.main.build_vault_outputs", return_value=[]
+        ), patch("orchestrator.main._maybe_post_outputs", return_value=False), redirect_stdout(stdout):
+            gcp_mock.side_effect = lambda task_result, settings: task_result
+            exit_code = main(
+                [
+                    "--task",
+                    "List all BigQuery datasets in the non-prod environment",
+                    "--repo-root",
+                    str(self.repo_root),
+                ]
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(gcp_mock.call_count, 1)
+        parsed = json.loads(stdout.getvalue())
+        self.assertEqual(parsed["task"]["mode"], "daytime")
+        self.assertIn("gcp", parsed["task"]["agents_needed"])
 
     def test_log_agent_run_includes_required_fields(self) -> None:
         usage = type("Usage", (), {"input_tokens": 120, "output_tokens": 45})()
@@ -204,6 +228,27 @@ class MainAndTokenLoggerTests(unittest.TestCase):
         self.assertEqual(result["status"], "needs_clarification")
         self.assertNotIn("John Smith", result["task"]["request"])
         self.assertNotIn("jsmith@example.com", result["task"]["request"])
+
+    def test_research_caps_cache_hit_context_to_configured_token_budget(self) -> None:
+        note_dir = self.repo_root / "jarvis" / "knowledge"
+        note_dir.mkdir(parents=True, exist_ok=True)
+        (note_dir / "long-note.md").write_text("# Long Note\n\n" + ("longnoteunique " * 2500), encoding="utf-8")
+        task_result = {
+            "task": {"request": "longnoteunique", "mode": "overnight"},
+            "agents_executed": [],
+            "output_summary": "",
+            "status": "completed",
+        }
+
+        result = run_research(
+            task_result,
+            {"research": {"max_context_notes": 3, "cache_hit_threshold": 0.1, "max_tokens_per_note": 100}},
+            str(self.repo_root / "jarvis"),
+        )
+
+        summary = result["research_summary"]
+        self.assertLessEqual(len(summary.split()), 110)
+        self.assertIn("truncated", summary.lower())
 
 
 if __name__ == "__main__":
