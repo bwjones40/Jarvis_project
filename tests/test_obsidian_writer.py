@@ -97,6 +97,58 @@ class ObsidianWriterTests(unittest.TestCase):
         self.assertIn("request follow-up help at any time", task_file["content"])
         self.assertIn("## Draft Communications", task_file["content"])
 
+    def test_pii_name_and_email_do_not_appear_in_task_file(self) -> None:
+        task = {
+            "title": "PII guard validation",
+            "request": "Summarize the project status for John Smith (jsmith@example.com) from the Aprilia team.",
+        }
+        task_result = {
+            "task_id": "task-001-pii-guard-validation",
+            "task_title": "PII guard validation",
+            "run_timestamp": "2026-06-13T00:00:00Z",
+            "mode": "overnight",
+            "status": "needs_clarification",
+            "agents_executed": [
+                {
+                    "agent_name": "orchestrator",
+                    "model": "claude-sonnet-4-6",
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "duration_seconds": 0.1,
+                    "output": {
+                        "plan": "Route to research, obsidian"
+                    },
+                    "errors": [],
+                }
+            ],
+            "output_summary": "Task parsed and routed for execution.",
+            "draft_communications": [],
+            "clarifications_needed": ["PII detected in input. Remove names, email addresses, and customer data before rerunning."],
+            "knowledge_updates": [],
+            "task": {
+                "title": "PII guard validation",
+                "priority": "high",
+                "mode": "overnight",
+                "agents_needed": ["orchestrator", "research", "obsidian"],
+                "due": "next run",
+                "request": "Input withheld because it contained PII.",
+                "context": "",
+                "copilot_handoff": "",
+            },
+        }
+
+        outputs = build_vault_outputs(
+            task_result=task_result,
+            task=task,
+            settings={"models": {"subagent": "claude-haiku-4-5"}, "vault": {"digests_dir": "jarvis/digests", "tasks_dir": "jarvis/tasks", "lessons_dir": "jarvis/agents"}},
+        )
+
+        task_file = next(item for item in outputs if item["vault_path"] == "jarvis/tasks/task-001-pii-guard-validation.md")
+        self.assertNotIn("John Smith", task_file["content"])
+        self.assertNotIn("jsmith@example.com", task_file["content"])
+        self.assertIn("[REDACTED_NAME]", task_file["content"])
+        self.assertIn("[REDACTED_EMAIL]", task_file["content"])
+
 
 if __name__ == "__main__":
     unittest.main()

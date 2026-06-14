@@ -149,6 +149,27 @@ class MainAndTokenLoggerTests(unittest.TestCase):
         self.assertNotIn("John Smith", joined)
         self.assertNotIn("jsmith@example.com", joined)
 
+    def test_draft_request_with_name_redacts_name_in_task_output(self) -> None:
+        task = {
+            "title": "PII guard validation",
+            "priority": "high",
+            "mode": "overnight",
+            "agents_needed": ["orchestrator", "research", "obsidian"],
+            "due": "next run",
+            "request": "Summarize the project status for John Smith (jsmith@example.com) from the Aprilia team.",
+            "context": "",
+            "copilot_handoff": "",
+        }
+        settings = {
+            "models": {"orchestrator": "claude-sonnet-4-6", "subagent": "claude-haiku-4-5"},
+        }
+
+        result = run_orchestrator(task, vault_notes=[], settings=settings)
+
+        self.assertEqual(result["status"], "needs_clarification")
+        self.assertNotIn("John Smith", result["task"]["request"])
+        self.assertNotIn("jsmith@example.com", result["task"]["request"])
+
 
 if __name__ == "__main__":
     unittest.main()
