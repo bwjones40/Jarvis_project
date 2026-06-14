@@ -22,28 +22,9 @@ def build_vault_outputs(
     if task_result is None:
         return [{"vault_path": digest_path, "content": _build_empty_digest()}]
 
-    drafts = _stage_draft_communications(task_result)
-    task_result["draft_communications"] = drafts
-    task_markdown = _build_task_record(task_result, task or {})
-    digest_markdown = _build_digest(task_result)
-    lesson_files = _build_lesson_files(task_result, vault_settings.get("lessons_dir", "jarvis/agents"))
-    knowledge_files = _build_knowledge_updates(task_result, vault_root)
-
-    outputs = [
-        {
-            "vault_path": f"{vault_settings.get('tasks_dir', 'jarvis/tasks')}/{task_result['task_id']}.md",
-            "content": task_markdown,
-        },
-        {
-            "vault_path": digest_path,
-            "content": digest_markdown,
-        },
-    ]
-    outputs.extend(lesson_files)
-    outputs.extend(knowledge_files)
-    task_result["knowledge_updates"] = [item["vault_path"] for item in outputs if item["vault_path"] != digest_path]
-
     usage = type("Usage", (), {"input_tokens": 0, "output_tokens": 0})()
+    task_result["draft_communications"] = _stage_draft_communications(task_result, task or {})
+    task_file_path = f"{vault_settings.get('tasks_dir', 'jarvis/tasks')}/{task_result['task_id']}.md"
     task_result["agents_executed"].append(
         log_agent_run(
             agent_name="obsidian",
@@ -52,12 +33,34 @@ def build_vault_outputs(
             duration=0.0,
             output={
                 "notes_updated": task_result["knowledge_updates"],
-                "task_file_written": outputs[0]["vault_path"],
+                "task_file_written": task_file_path,
                 "digest_updated": digest_path,
             },
             errors=[],
         )
     )
+
+    lesson_files = _build_lesson_files(task_result, vault_settings.get("lessons_dir", "jarvis/agents"))
+    knowledge_files = _build_knowledge_updates(task_result, vault_root)
+    task_result["knowledge_updates"] = [
+        task_file_path,
+        *(item["vault_path"] for item in lesson_files),
+        *(item["vault_path"] for item in knowledge_files),
+    ]
+    task_markdown = _build_task_record(task_result, task or {})
+    digest_markdown = _build_digest(task_result)
+    outputs = [
+        {
+            "vault_path": task_file_path,
+            "content": task_markdown,
+        },
+        {
+            "vault_path": digest_path,
+            "content": digest_markdown,
+        },
+        *lesson_files,
+        *knowledge_files,
+    ]
     return outputs
 
 
@@ -198,8 +201,36 @@ def _build_knowledge_updates(task_result: dict[str, Any], vault_root: str) -> li
     return outputs
 
 
-def _stage_draft_communications(task_result: dict[str, Any]) -> list[dict[str, str]]:
+def _stage_draft_communications(task_result: dict[str, Any], task: dict[str, Any]) -> list[dict[str, str]]:
     drafts: list[dict[str, str]] = []
+    request_text = sanitize_text(task.get("request", task_result.get("task", {}).get("request", "")))
+    lowered_request = request_text.lower()
+    if "draft a teams message" in lowered_request or "teams message" in lowered_request:
+        drafts.append(
+            {
+                "draft_id": str(uuid4()),
+                "task_id": task_result["task_id"],
+                "channel": "teams",
+                "recipient": "Aprilia team",
+                "subject": sanitize_text(task_result["task_title"]),
+                "body": "[HUMAN APPROVAL REQUIRED]\nThe work is complete and the team can request follow-up help at any time.",
+                "approval_status": "pending",
+                "flag": "[HUMAN APPROVAL REQUIRED]",
+            }
+        )
+    elif "draft an email" in lowered_request or "email" in lowered_request:
+        drafts.append(
+            {
+                "draft_id": str(uuid4()),
+                "task_id": task_result["task_id"],
+                "channel": "email",
+                "recipient": "Operator-reviewed recipient",
+                "subject": sanitize_text(task_result["task_title"]),
+                "body": "[HUMAN APPROVAL REQUIRED]\nDraft email content requires operator review before sending.",
+                "approval_status": "pending",
+                "flag": "[HUMAN APPROVAL REQUIRED]",
+            }
+        )
     draft_keywords = ("email", "teams", "send", "notify", "message to")
     for run in task_result["agents_executed"]:
         candidate_text = sanitize_text(str(run.get("output", "")))
@@ -207,6 +238,8 @@ def _stage_draft_communications(task_result: dict[str, Any]) -> list[dict[str, s
         if not any(keyword in lowered for keyword in draft_keywords):
             continue
         channel = "teams" if "teams" in lowered else "email"
+        if drafts and drafts[0]["channel"] == channel:
+            continue
         drafts.append(
             {
                 "draft_id": str(uuid4()),
