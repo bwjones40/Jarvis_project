@@ -1,6 +1,6 @@
 # Jarvis Inbox
 
-## Task: Replace this title before commit
+## Task: Testing Clear Inbox Flow
 **Priority**: medium
 **Mode**: overnight
 **Agents needed**: orchestrator, research, obsidian
