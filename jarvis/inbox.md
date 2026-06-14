@@ -1,4 +1,3 @@
-@
 # Jarvis Inbox
 
 ##Task: Test overnight run
@@ -12,4 +11,3 @@
 Summarize what you know about the Jarvis system from the vault
 
 Write a brief paragraph in English.
-@
