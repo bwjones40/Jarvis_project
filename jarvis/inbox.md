@@ -1,18 +1,19 @@
 # Jarvis Inbox
 
-## Task: Draft Teams message
-**Priority**: low
+## Task: Replace this title before commit
+**Priority**: medium
 **Mode**: overnight
-**Agents needed**: orchestrator, obsidian
+**Agents needed**: orchestrator, research, obsidian
 **Due**: next run
 
 ### Request
-Draft a Teams message to the Cory summarizing that the work is complete on the Jarvis project
-and they can request follow-up help at any time.
+Describe the task Jarvis should complete before the next run.
 
 ### Context
+Optional project context, links, or non-PII background.
 
 ### Copilot handoff
+Optional manual handoff instructions for Copilot.
 
 ---
 _Clear this file after each run. Jarvis archives completed tasks to jarvis/tasks/_
