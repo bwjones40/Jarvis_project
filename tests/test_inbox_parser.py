@@ -36,6 +36,31 @@ VALID_INBOX = textwrap.dedent(
 )
 
 
+TEMPLATE_INBOX = textwrap.dedent(
+    """\
+    # Jarvis Inbox
+
+    ## Task: Replace this title before commit
+    **Priority**: medium
+    **Mode**: overnight
+    **Agents needed**: orchestrator, research, obsidian
+    **Due**: next run
+
+    ### Request
+    Describe the task Jarvis should complete before the next run.
+
+    ### Context
+    Optional project context, links, or non-PII background.
+
+    ### Copilot handoff
+    Optional manual handoff instructions for Copilot.
+
+    ---
+    _Clear this file after each run. Jarvis archives completed tasks to jarvis/tasks/_
+    """
+)
+
+
 class InboxParserTests(unittest.TestCase):
     def write_inbox(self, content: str) -> Path:
         temp_dir = TEST_ROOT / f"inbox-{uuid4().hex}"
@@ -58,6 +83,13 @@ class InboxParserTests(unittest.TestCase):
 
     def test_empty_file_returns_none(self) -> None:
         inbox = self.write_inbox("")
+
+        task = parse_inbox(inbox)
+
+        self.assertIsNone(task)
+
+    def test_template_inbox_returns_none(self) -> None:
+        inbox = self.write_inbox(TEMPLATE_INBOX)
 
         task = parse_inbox(inbox)
 

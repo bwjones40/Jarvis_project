@@ -10,6 +10,10 @@ from typing import Any
 VALID_PRIORITIES = {"high", "medium", "low"}
 VALID_MODES = {"overnight", "daytime"}
 VALID_AGENTS = {"orchestrator", "research", "gcp", "obsidian"}
+TEMPLATE_TITLE = "Replace this title before commit"
+TEMPLATE_REQUEST = "Describe the task Jarvis should complete before the next run."
+TEMPLATE_CONTEXT = "Optional project context, links, or non-PII background."
+TEMPLATE_COPILOT_HANDOFF = "Optional manual handoff instructions for Copilot."
 
 
 class InboxParseError(ValueError):
@@ -52,6 +56,11 @@ def parse_inbox(inbox_path: str | Path) -> dict[str, Any] | None:
     if not request:
         raise InboxParseError("Request section is required and cannot be empty.")
 
+    context = _extract_section(remaining, "Context")
+    copilot_handoff = _extract_section(remaining, "Copilot handoff")
+    if _is_template_task(title, request, context, copilot_handoff):
+        return None
+
     return {
         "title": title,
         "priority": priority,
@@ -59,8 +68,8 @@ def parse_inbox(inbox_path: str | Path) -> dict[str, Any] | None:
         "agents_needed": agents_needed,
         "due": fields.get("due", "next run").strip() or "next run",
         "request": request,
-        "context": _extract_section(remaining, "Context"),
-        "copilot_handoff": _extract_section(remaining, "Copilot handoff"),
+        "context": context,
+        "copilot_handoff": copilot_handoff,
     }
 
 
@@ -93,3 +102,12 @@ def _extract_section(content: str, heading: str) -> str:
     if not match:
         return ""
     return match.group(1).strip()
+
+
+def _is_template_task(title: str, request: str, context: str, copilot_handoff: str) -> bool:
+    return (
+        title == TEMPLATE_TITLE
+        and request == TEMPLATE_REQUEST
+        and context == TEMPLATE_CONTEXT
+        and copilot_handoff == TEMPLATE_COPILOT_HANDOFF
+    )

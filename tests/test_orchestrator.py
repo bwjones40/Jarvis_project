@@ -61,6 +61,41 @@ class MainAndTokenLoggerTests(unittest.TestCase):
         parsed = json.loads(stdout.getvalue())
         self.assertEqual(parsed["title"], "Test task")
 
+    def test_dry_run_reports_no_task_for_cleared_template(self) -> None:
+        (self.repo_root / "jarvis" / "inbox.md").write_text(
+            textwrap.dedent(
+                """\
+                # Jarvis Inbox
+
+                ## Task: Replace this title before commit
+                **Priority**: medium
+                **Mode**: overnight
+                **Agents needed**: orchestrator, research, obsidian
+                **Due**: next run
+
+                ### Request
+                Describe the task Jarvis should complete before the next run.
+
+                ### Context
+                Optional project context, links, or non-PII background.
+
+                ### Copilot handoff
+                Optional manual handoff instructions for Copilot.
+
+                ---
+                _Clear this file after each run. Jarvis archives completed tasks to jarvis/tasks/_
+                """
+            ),
+            encoding="utf-8",
+        )
+        stdout = io.StringIO()
+
+        with redirect_stdout(stdout):
+            exit_code = main(["--dry-run", "--repo-root", str(self.repo_root)])
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout.getvalue().strip(), "No task in inbox")
+
     def test_log_agent_run_includes_required_fields(self) -> None:
         usage = type("Usage", (), {"input_tokens": 120, "output_tokens": 45})()
 
