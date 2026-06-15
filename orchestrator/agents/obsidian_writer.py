@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from orchestrator.utils.pii_guard import get_pii_mode, sanitize_text
 from orchestrator.utils.token_logger import calculate_cost, log_agent_run
+from orchestrator.utils.usage_history import build_usage_entry, load_usage_history
 from orchestrator.utils.vault_reader import note_exists, read_note
 
 
@@ -200,10 +201,16 @@ def _build_empty_digest() -> str:
 
 def _build_weekly_rollup(task_result: dict[str, Any], vault_root: str, tasks_dir: str) -> dict[str, Any]:
     cutoff = datetime.now(timezone.utc).date() - timedelta(days=6)
-    input_tokens = sum(run["input_tokens"] for run in task_result["agents_executed"])
-    output_tokens = sum(run["output_tokens"] for run in task_result["agents_executed"])
-    estimated_cost = calculate_cost(task_result["agents_executed"])
-    task_count = 1
+    entries: dict[tuple[str, str], dict[str, Any]] = {}
+
+    current_entry = build_usage_entry(task_result)
+    entries[_rollup_key(current_entry)] = current_entry
+
+    for entry in load_usage_history(vault_root):
+        run_date = _entry_run_date(entry)
+        if run_date is None or run_date < cutoff:
+            continue
+        entries[_rollup_key(entry)] = entry
 
     root = Path(vault_root)
     tasks_path = root / tasks_dir if not Path(tasks_dir).is_absolute() else Path(tasks_dir)
@@ -214,17 +221,39 @@ def _build_weekly_rollup(task_result: dict[str, Any], vault_root: str, tasks_dir
             if run_date is None or run_date < cutoff:
                 continue
             totals = _extract_token_totals(content)
-            input_tokens += totals["input_tokens"]
-            output_tokens += totals["output_tokens"]
-            estimated_cost += _extract_estimated_cost(content)
-            task_count += 1
+            entry = {
+                "task_id": path.stem,
+                "run_timestamp": run_date.isoformat(),
+                "input_tokens": totals["input_tokens"],
+                "output_tokens": totals["output_tokens"],
+                "estimated_cost": _extract_estimated_cost(content),
+            }
+            entries[_rollup_key(entry)] = entry
+
+    input_tokens = sum(int(entry.get("input_tokens", 0) or 0) for entry in entries.values())
+    output_tokens = sum(int(entry.get("output_tokens", 0) or 0) for entry in entries.values())
+    estimated_cost = sum(float(entry.get("estimated_cost", 0.0) or 0.0) for entry in entries.values())
 
     return {
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "estimated_cost": estimated_cost,
-        "task_count": task_count,
+        "task_count": len(entries),
     }
+
+
+def _rollup_key(entry: dict[str, Any]) -> tuple[str, str]:
+    return (str(entry.get("task_id", "")), str(entry.get("run_timestamp", ""))[:10])
+
+
+def _entry_run_date(entry: dict[str, Any]) -> Any:
+    run_timestamp = str(entry.get("run_timestamp", ""))
+    if len(run_timestamp) < 10:
+        return None
+    try:
+        return datetime.fromisoformat(run_timestamp[:10]).date()
+    except ValueError:
+        return None
 
 
 def _extract_run_date(content: str) -> Any:

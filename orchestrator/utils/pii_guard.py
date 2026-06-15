@@ -17,6 +17,8 @@ SAFE_PHRASES = {
     "Confirming Token",
     "Token Usage",
     "Claude API",
+    "Cost Rollup",
+    "Rollup Task",
 }
 VALID_PII_MODES = {"strict", "standard", "off"}
 

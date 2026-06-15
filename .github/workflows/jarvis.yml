@@ -43,14 +43,17 @@ jobs:
 
       - name: Commit cleared inbox
         run: |
-          if git diff --quiet -- jarvis/inbox.md; then
+          git add jarvis/inbox.md
+          if [ -f jarvis/usage-history.json ]; then
+            git add jarvis/usage-history.json
+          fi
+          if git diff --cached --quiet; then
             echo "Inbox unchanged; nothing to commit."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add jarvis/inbox.md
-          git commit -m "jarvis: clear inbox after run [jarvis-skip]"
+          git commit -m "jarvis: update run state after run [jarvis-skip]"
           git push
 
       - name: Power Automate smoke test

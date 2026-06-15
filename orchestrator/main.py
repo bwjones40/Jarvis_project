@@ -22,6 +22,7 @@ from orchestrator.agents.orchestrator import run_orchestrator
 from orchestrator.agents.research import run_research
 from orchestrator.utils.inbox_parser import InboxParseError, parse_inbox
 from orchestrator.utils.power_automate import post_files
+from orchestrator.utils.usage_history import append_usage_history
 from orchestrator.utils.vault_reader import search_notes
 
 
@@ -78,6 +79,7 @@ def main(argv: list[str] | None = None) -> int:
     outputs = build_vault_outputs(task_result=task_result, task=task, settings=settings, vault_root=str(repo_root))
     posted = _maybe_post_outputs(outputs)
     if posted and not args.task:
+        append_usage_history(repo_root, task_result)
         (repo_root / "jarvis" / "inbox.md").write_text(_inbox_template(), encoding="utf-8")
     print(json.dumps(task_result, indent=2))
     return 0

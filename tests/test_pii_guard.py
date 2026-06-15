@@ -31,6 +31,12 @@ class PiiGuardTests(unittest.TestCase):
         self.assertFalse(contains_pii(text, mode="strict"))
         self.assertEqual(sanitize_text(text, mode="strict"), text)
 
+    def test_strict_mode_allows_cost_rollup_validation_terms(self) -> None:
+        text = "Phase 6 Cost Rollup Task 3"
+
+        self.assertFalse(contains_pii(text, mode="strict"))
+        self.assertEqual(sanitize_text(text, mode="strict"), text)
+
 
 if __name__ == "__main__":
     unittest.main()

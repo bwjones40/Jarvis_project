@@ -1,4 +1,5 @@
 import unittest
+import json
 from pathlib import Path
 from uuid import uuid4
 import shutil
@@ -247,6 +248,66 @@ class ObsidianWriterTests(unittest.TestCase):
                     "**Run**: 2026-06-14T00:00:00Z",
                     "| **Total** |  | **200** | **70** | **1.0s** |",
                     "**Estimated cost**: $0.02",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        task_result = {
+            "task_id": "task-001-current",
+            "task_title": "Current",
+            "run_timestamp": "2026-06-15T00:00:00Z",
+            "mode": "overnight",
+            "status": "completed",
+            "agents_executed": [
+                {
+                    "agent_name": "orchestrator",
+                    "model": "claude-sonnet-4-6",
+                    "input_tokens": 300,
+                    "output_tokens": 80,
+                    "duration_seconds": 1.0,
+                    "output": {},
+                    "errors": [],
+                }
+            ],
+            "output_summary": "Current task complete.",
+            "draft_communications": [],
+            "clarifications_needed": [],
+            "knowledge_updates": [],
+        }
+
+        outputs = build_vault_outputs(
+            task_result=task_result,
+            task={"request": "Summarize costs."},
+            settings={"models": {"subagent": "claude-haiku-4-5"}, "vault": {"digests_dir": "jarvis/digests", "tasks_dir": "jarvis/tasks", "lessons_dir": "jarvis/agents"}},
+            vault_root=str(vault_root),
+        )
+
+        digest = next(item for item in outputs if item["vault_path"].startswith("jarvis/digests/"))
+        self.assertIn("Last 7 days input tokens: 600", digest["content"])
+        self.assertIn("Last 7 days output tokens: 200", digest["content"])
+        self.assertIn("Task records counted: 3", digest["content"])
+
+    def test_digest_weekly_rollup_uses_persisted_usage_history(self) -> None:
+        vault_root = self._make_temp_vault()
+        history_path = vault_root / "jarvis" / "usage-history.json"
+        history_path.parent.mkdir(parents=True)
+        history_path.write_text(
+            json.dumps(
+                [
+                    {
+                        "task_id": "task-001-prior-a",
+                        "run_timestamp": "2026-06-13T00:00:00Z",
+                        "input_tokens": 100,
+                        "output_tokens": 50,
+                        "estimated_cost": 0.01,
+                    },
+                    {
+                        "task_id": "task-001-prior-b",
+                        "run_timestamp": "2026-06-14T00:00:00Z",
+                        "input_tokens": 200,
+                        "output_tokens": 70,
+                        "estimated_cost": 0.02,
+                    },
                 ]
             ),
             encoding="utf-8",
