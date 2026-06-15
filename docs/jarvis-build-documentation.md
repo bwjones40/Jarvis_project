@@ -4,7 +4,7 @@
 
 [Confirmed] Jarvis is an internal Python workflow for operator-assigned task execution. The operator assigns work through `jarvis/inbox.md`; Jarvis parses the task, runs a sequential agent pipeline, renders markdown outputs, and optionally posts those outputs to a Power Automate webhook for SharePoint/Obsidian delivery. Evidence: `orchestrator/main.py`, `.github/workflows/jarvis.yml`, `specs/001-jarvis-mvp/spec.md`.
 
-[Confirmed] The current implementation is mostly deterministic Python. It records agent-like runs, but it does not currently call the Anthropic SDK or load prompt files at runtime. Evidence: `requirements.txt`, `prompts/*.md`, `orchestrator/agents/*.py`.
+[Confirmed] The current implementation is mostly deterministic Python. Runtime agents still do not load prompt files or use Anthropic for task execution, but the GitHub Actions workflow now performs a real Anthropic smoke test through `orchestrator/utils/anthropic_smoke.py`. Evidence: `requirements.txt`, `prompts/*.md`, `orchestrator/agents/*.py`, `.github/workflows/jarvis.yml`, `orchestrator/utils/anthropic_smoke.py`.
 
 [Confirmed] Phase 4-6 code now exists: Obsidian output batching/lessons, daytime GCP discovery via local `bq`, token/cost tables, weekly digest rollups, context pruning, and configurable PII handling. Evidence: `orchestrator/agents/obsidian_writer.py`, `orchestrator/agents/gcp_discovery.py`, `orchestrator/utils/token_logger.py`, `config/settings.yaml`, `tests/test_gcp_discovery.py`, `tests/test_pii_guard.py`.
 
@@ -37,7 +37,8 @@
 | `orchestrator/utils/token_logger.py` | AgentRun formatting and estimated Claude cost calculation. | Implemented for zero-token deterministic runs | High | `tests/test_orchestrator.py`, `tests/test_obsidian_writer.py` |
 | `orchestrator/utils/vault_reader.py` | Local markdown note existence, read, and keyword search. | Minimal | Medium | `orchestrator/utils/vault_reader.py` |
 | `config/settings.yaml` | Model labels, timeouts, vault dirs, research limits, `pii.mode`, GCP project. | Active but not fully enforced | High | `config/settings.yaml` |
-| `.github/workflows/jarvis.yml` | GitHub-hosted runtime, schedule, bot commit, PA smoke test. | Active | High | `.github/workflows/jarvis.yml` |
+| `.github/workflows/jarvis.yml` | GitHub-hosted runtime, schedule, Anthropic smoke test, bot commit, PA smoke test. | Active | High | `.github/workflows/jarvis.yml` |
+| `orchestrator/utils/usage_history.py` | Persists per-run token/cost usage to `jarvis/usage-history.json` for weekly digest rollups. | Implemented MVP | High | `orchestrator/utils/usage_history.py` |
 | `prompts/*.md` | Intended system prompts for future LLM-backed agents. | Present but unused at runtime | High | `prompts/orchestrator.md`, `prompts/research.md`, `prompts/gcp_discovery.md`, `prompts/obsidian_writer.md` |
 | `tests/` | Regression tests for parser, orchestrator, PII, GCP, Obsidian, Power Automate. | Useful but not exhaustive | High | `tests/*.py` |
 | `specs/001-jarvis-mvp/Verifcation-evidence/` | Screenshot evidence for validation. Folder name has a typo. | Human evidence, not automated | Medium | `specs/001-jarvis-mvp/Verifcation-evidence/` |
@@ -61,9 +62,9 @@
 
 ### Partially Implemented
 
-- [Confirmed] Anthropic connectivity is checked in GitHub Actions, but no Anthropic request is made by agents. Evidence: `.github/workflows/jarvis.yml`, `orchestrator/agents/*.py`.
+- [Confirmed] GitHub Actions performs a real Anthropic smoke test with `python -m orchestrator.utils.anthropic_smoke --model claude-haiku-4-5 --prompt hello`, but task agents themselves still do not use Anthropic. Evidence: `.github/workflows/jarvis.yml`, `orchestrator/utils/anthropic_smoke.py`, `orchestrator/agents/*.py`.
 - [Confirmed] Prompt files describe agent roles, but runtime code does not load or execute them. Evidence: `prompts/*.md`, `orchestrator/agents/*.py`.
-- [Confirmed] Weekly cost rollup exists, but costs remain `$0.00` until real token usage is captured. Evidence: `orchestrator/utils/token_logger.py`, `orchestrator/agents/*.py`.
+- [Confirmed] Weekly cost rollup now reads persisted usage entries from `jarvis/usage-history.json` plus current/local task output, but costs remain `$0.00` for deterministic agent runs until broader model-backed token usage is captured. Evidence: `orchestrator/utils/usage_history.py`, `orchestrator/main.py`, `orchestrator/agents/obsidian_writer.py`.
 - [Confirmed] GCP discovery is read-only by command choice, but it depends on the operator's local `bq`/`gcloud` auth and local PATH resolution. Evidence: `orchestrator/agents/gcp_discovery.py`, validation transcripts.
 - [Confirmed] Power Automate create/update behavior is specified but implemented outside the repository. Evidence: `specs/001-jarvis-mvp/contracts/webhook-payload.md`.
 - [Confirmed] PII mode `off` is implemented in code and unit tests; fresh end-to-end validation is still needed because one captured run contained `[REDACTED_NAME]` markers. Artifact Evidence: user-provided Scenario 4 output attachment.
@@ -103,7 +104,7 @@ $env:PYTHONDONTWRITEBYTECODE='1'
 python -m unittest discover -s tests
 ```
 
-[Confirmed] Current observed result after the PII-mode fix: `Ran 40 tests ... OK`. Artifact Evidence: local terminal run during documentation update.
+[Confirmed] Current observed regression baseline: `Ran 50 tests ... OK`. Artifact Evidence: local terminal run after Phase 6 documentation reconciliation.
 
 ### Local Dry Run
 
@@ -144,9 +145,11 @@ python orchestrator/main.py
 1. Edit `jarvis/inbox.md`.
 2. Commit and push.
 3. GitHub Actions runs Jarvis.
-4. Python posts vault files to Power Automate.
-5. If posting succeeds, the workflow commits a cleared inbox with `[jarvis-skip]`.
-6. Power Automate writes files to SharePoint; OneDrive exposes them to Obsidian.
+4. GitHub Actions runs the Anthropic smoke test before the Jarvis task pipeline.
+5. Python posts vault files to Power Automate.
+6. If posting succeeds, the workflow commits a cleared inbox with `[jarvis-skip]`.
+7. The workflow also commits `jarvis/usage-history.json` when present so later digest runs can roll up prior task usage.
+8. Power Automate writes files to SharePoint; OneDrive exposes them to Obsidian.
 
 Evidence: `.github/workflows/jarvis.yml`, `orchestrator/main.py`.
 
@@ -161,7 +164,7 @@ Evidence: `.github/workflows/jarvis.yml`, `orchestrator/main.py`.
 [Confirmed] Runtime environment variables/secrets:
 
 - `POWER_AUTOMATE_WEBHOOK_URL`: required to post vault files and clear inbox after task runs.
-- `ANTHROPIC_API_KEY`: required by GitHub Actions connectivity check, but not used by current agent code.
+- `ANTHROPIC_API_KEY`: required by the GitHub Actions Anthropic smoke test, but not used by current task-agent execution code.
 
 [Confirmed] `config/settings.yaml` active fields:
 
@@ -170,6 +173,8 @@ Evidence: `.github/workflows/jarvis.yml`, `orchestrator/main.py`.
 - `research.max_context_notes`, `research.max_tokens_per_note`, `research.cache_hit_threshold`: used by vault search/research.
 - `pii.mode`: used by orchestrator, research, GCP, and Obsidian writer.
 - `gcp.project`: used by GCP discovery.
+
+[Confirmed] `jarvis/usage-history.json` is runtime state created by `append_usage_history()` after successful output posting. The workflow stages and commits it with the cleared inbox so weekly rollups can aggregate recent task usage across runs. Evidence: `orchestrator/main.py`, `orchestrator/utils/usage_history.py`, `.github/workflows/jarvis.yml`.
 
 [Confirmed] `config/settings.yaml` weak or inactive fields:
 
@@ -276,11 +281,11 @@ Recommended Validation Step: Before sensitive runs, set `pii.mode: strict` and r
 - [Unverified] Whether OneDrive sync consistently surfaces files in Obsidian within target time.
 - [Unverified] Whether GitHub Actions environment can ever run GCP discovery; current design implies local operator auth only.
 - [Unverified] Whether Anthropic model names and credentials are valid for real model calls.
-- [Unverified] Whether evidence screenshots in `Verifcation-evidence` cover all Phase 5-6 proof after the latest PII fix.
+- [Confirmed] Phase 6 evidence is current in `specs/001-jarvis-mvp/Verifcation-evidence/phase-6-cost-controls/`, including screenshots for weekly cost rollup with 3 task records, context pruning AgentRun output, and research `cache_hit` logging. Evidence: `specs/001-jarvis-mvp/Verifcation-evidence/phase-6-cost-controls/6.5 Weekly cost rollup with 3 task records - Proof.png`, `specs/001-jarvis-mvp/Verifcation-evidence/phase-6-cost-controls/6.6 Context pruning AgentRun output - Proof.png`, `specs/001-jarvis-mvp/Verifcation-evidence/phase-6-cost-controls/6.7 Research cache_hit AgentRun output - Proof.png`.
 
 ## 12. Contradictions
 
-- [Contradictory Evidence] Specs and plans say Claude Enterprise agents will execute tasks; code records model names but makes no Anthropic calls. Evidence: `specs/001-jarvis-mvp/plan.md`, `orchestrator/agents/*.py`.
+- [Contradictory Evidence] Specs and plans say Claude Enterprise agents will execute tasks; current code records model names and the workflow now performs a real Anthropic smoke test, but task execution itself is still deterministic and not Claude-backed. Evidence: `specs/001-jarvis-mvp/plan.md`, `orchestrator/agents/*.py`, `.github/workflows/jarvis.yml`, `orchestrator/utils/anthropic_smoke.py`.
 - [Contradictory Evidence] `tasks.md` still lists some implemented items as incomplete. Evidence: `specs/001-jarvis-mvp/tasks.md`, `tests/test_gcp_discovery.py`, `orchestrator/agents/gcp_discovery.py`.
 - [Contradictory Evidence] `plan.md` describes `bq ls --project={project}`, but implemented code uses `--project_id={project}` because local validation showed `--project` failed. Evidence: `plan.md`, `gcp_discovery.py`, Artifact Evidence: user validation error.
 - [Contradictory Evidence] Original project constraints state "No PII"; updated spec/config allow `pii.mode: off` for approved local runs. Evidence: `AGENTS.md`, `spec.md`, `config/settings.yaml`.
@@ -301,10 +306,41 @@ Recommended Validation Step: Before sensitive runs, set `pii.mode: strict` and r
 ## 14. Missing Information / Follow-ups
 
 - Exported Power Automate flow definition or exact build notes.
-- Current pass/fail evidence for Phase 5 and Phase 6 after the latest changes.
+- Phase 5 end-to-end rerun evidence is still a useful gap; Phase 6 evidence is current.
 - Policy decision for default `pii.mode`.
 - Operator README for daily use, GCP prerequisites, and git rebase after bot commits.
 - Anthropic integration design.
 - Unique task ID strategy.
 - CI regression-test step.
 - Evidence cleanup plan for the typo path `Verifcation-evidence`.
+
+## 15. Known Git Failure Recovery
+
+[Confirmed] The most common git failure during validation was a non-fast-forward push caused by the GitHub Actions workflow committing cleared inbox state and `jarvis/usage-history.json` back to `main`. Evidence: `.github/workflows/jarvis.yml`, recent commit history with repeated `jarvis: update run state after run [jarvis-skip]` commits.
+
+[Confirmed] Safe recovery sequence when your local change updates `jarvis/inbox.md` or nearby validation files:
+
+```powershell
+git status --short --branch
+git fetch origin
+$env:GIT_EDITOR='true'
+git pull --rebase origin main
+```
+
+[Confirmed] If `jarvis/inbox.md` conflicts during the rebase, keep the task content you intended to push, then continue:
+
+```powershell
+git add jarvis/inbox.md
+git rebase --continue
+git push origin main
+```
+
+[Confirmed] If you get stuck mid-rebase or accidentally created a detached `HEAD` commit, abort and restart the rebase flow instead of creating more commits inside the rebase:
+
+```powershell
+git rebase --abort
+git fetch origin
+$env:GIT_EDITOR='true'
+git pull --rebase origin main
+git push origin main
+```

@@ -1,8 +1,9 @@
-# Feature Specification: Jarvis Phase 2 — Agent Ecosystem Expansion
+# Feature Specification: Jarvis Phase 2 — Agent Ecosystem Foundation
 
-**Feature ID**: 003-phase2-agent-ecosystem
+**Feature ID**: 002-phase2-agent-ecosystem
 **Created**: 2026-06-14
-**Status**: Draft
+**Revised**: 2026-06-15
+**Status**: Active
 
 ---
 
@@ -10,18 +11,16 @@
 
 ### Problem Statement
 
-The Jarvis MVP executes overnight tasks reliably but operates as a black box: there is no structured record of what each agent did, no mechanism to detect when output quality degrades, no way to systematically improve prompts or routing decisions over time, and no tooling to keep the Obsidian vault organized as it grows. The operator has no early warning when something goes wrong, and accumulated knowledge about what works is stored only as freeform Markdown lesson files rather than as queryable, actionable data.
+The Jarvis MVP executes overnight tasks as a deterministic pipeline: it never calls the Anthropic API at runtime, produces no queryable record of what each agent did, and gives the operator no visibility when output quality is poor. There is no way to detect silent failures, no structured data to improve the system over time, and no morning signal when something went wrong. The system also has several stability gaps — task ID collisions, no CI regression gate, overlapping runs, and a Power Automate flow that always creates rather than updates vault notes.
 
 ### Proposed Solution
 
-Expand Jarvis from a task executor into a self-monitoring, continuously improving agent ecosystem by adding:
+Transform Jarvis from a deterministic template pipeline into a real LLM-backed system with structured observability and output quality gates, in three sequential sprints preceded by a mandatory stabilization phase:
 
-1. **Structured observability** — every agent run produces a queryable JSON log, giving the system a data foundation it currently lacks
-2. **Output quality gates** — a Validation Agent scores every agent output before it is committed, enabling automatic retry and graceful degradation instead of silent failure
-3. **Governance-safe continuous improvement** — a CI Agent analyzes logs bi-weekly and surfaces improvement recommendations for human approval, never deploying changes autonomously
-4. **Vault health maintenance** — a Vault Maintenance Agent keeps the Obsidian vault organized automatically, handling low-risk fixes and queuing high-risk changes for operator review
-5. **On-demand PR analysis** — a PR Review Agent produces structured pull request reviews on request, written to the vault only
-6. **Prompt lifecycle management** — a library system that versions, tags, and tracks the performance of every prompt used across all agents
+1. **Phase 0 — Stabilization**: Fix known gaps before any new feature lands — wire real Anthropic API calls, add CI regression testing, fix task IDs, prevent run collisions, update the Power Automate flow to upsert vault notes, and resolve the Node.js 24 deprecation warning.
+2. **Sprint 1 — Structured Logging**: Every agent run produces a queryable JSON log file synced to SharePoint, giving the system a data foundation it currently lacks.
+3. **Sprint 2 — Validation Agent**: Every research and obsidian_writer output is scored for quality before being committed, enabling retry and graceful degradation instead of silent failure.
+4. **Sprint 3 — Monitoring**: The morning digest surfaces per-run quality scores, and a bi-weekly stats report provides trend visibility across runs.
 
 ---
 
@@ -29,158 +28,147 @@ Expand Jarvis from a task executor into a self-monitoring, continuously improvin
 
 | Actor | Role |
 |-------|------|
-| Operator (You) | Reviews CI reports, approves/rejects improvement recommendations via inbox task, reviews escalated failures in morning digest |
-| Orchestrator Agent | Routes tasks to subagents; now enforces recovery logic (retry, skip-degrade) based on Validation Agent scores |
-| Validation Agent | Scores every subagent output for quality, relevance, completeness, and compliance; triggers retry or skip-degrade |
-| CI Agent | Analyzes structured logs bi-weekly; produces scored improvement recommendations; never auto-applies changes |
-| Vault Maintenance Agent | Enforces vault organization standards; auto-fixes low-risk issues; proposes high-risk changes for operator approval |
-| PR Review Agent | Analyzes GitHub pull requests on demand; writes structured reviews to vault only; never posts to GitHub |
-| Research Agent | Unchanged from Phase 1 |
-| GCP Discovery Agent | Unchanged from Phase 1 |
-| Obsidian Writer Agent | Unchanged from Phase 1; now also writes structured JSON logs and CI reports to vault |
+| Operator | Reads morning digest and weekly stats report; acts on escalated failures; approves no automated changes in this phase |
+| Orchestrator Agent | Routes tasks to subagents; enforces retry/skip logic based on Validation Agent scores |
+| Research Agent | Vault keyword search and context retrieval; now backed by real Claude API call; output scored by Validation Agent |
+| GCP Discovery Agent | Unchanged from Phase 1; daytime-only; validated structurally (exit code + JSON parse), not by Validation Agent |
+| Obsidian Writer Agent | Synthesizes task results into digest and task records; now backed by real Claude API call; output scored by Validation Agent |
+| Validation Agent | New in Sprint 2; scores research and obsidian_writer outputs across four quality dimensions; drives retry/skip decisions |
+| Stats Reporter | New in Sprint 3; pure log aggregation job (no LLM); produces bi-weekly stats report from JSON run logs |
 
 ---
 
 ## User Scenarios & Testing
 
-### Primary Flow: Observable Agent Run with Quality Gates
+### Primary Flow: LLM-Backed Overnight Run with Observability (Post-Phase 0 + Sprint 1)
 
-1. Operator commits a task to the inbox file
-2. System runs the agent pipeline as in Phase 1
-3. After each subagent completes, Validation Agent scores the output
-4. If score ≥ 0.90: output is accepted and the pipeline continues
-5. If score is 0.60–0.89: agent retries once; if retry score ≥ 0.60, output is accepted as partial
-6. If score < 0.60 after retry: agent is skipped, TaskResult marked `partial`, digest entry flagged `[HUMAN REVIEW REQUIRED]`
-7. Every agent execution produces a structured JSON log entry synced to SharePoint
-8. Operator reads the morning digest and sees a quality score summary for the run
+1. Operator commits a task to `jarvis/inbox.md`
+2. GitHub Actions triggers the `run-jarvis` job (queued if another run is in progress)
+3. Orchestrator calls the Anthropic API with the real orchestrator prompt
+4. Research Agent calls the Anthropic API with the real research prompt; vault context returned
+5. Obsidian Writer calls the Anthropic API with the real obsidian_writer prompt; digest and task record produced
+6. Each agent execution writes a structured JSON log entry to `jarvis/logs/{date}/{run_id}.json`
+7. JSON log is included in the Power Automate webhook payload and synced to SharePoint
+8. Operator reads the morning digest in SharePoint/Obsidian
 
-**Acceptance**: Operator can determine from the digest and vault logs exactly which agents ran, what scores they received, whether any retries occurred, and which (if any) outputs were skipped — all without reading raw log files.
+**Acceptance**: JSON log exists in SharePoint after every overnight run. Log contains real token usage counts (not zero). Task IDs are unique across runs. No overlapping runs produce conflicting logs.
 
-### Primary Flow: Bi-Weekly CI Report Review
+---
 
-1. CI Agent runs automatically on Sunday and Wednesday nights
-2. CI Agent reads all structured JSON logs since the last CI run
-3. CI Agent scores each agent across: success rate, output quality, token efficiency, latency, recovery rate, and human intervention rate
-4. CI Agent produces a human-readable report in the vault with ranked improvement recommendations
-5. Each recommendation includes: the specific change proposed, the evidence supporting it, the projected improvement score, and the risk level
-6. Operator reads the report in SharePoint/Obsidian and decides which recommendations to approve
-7. To approve a recommendation, operator writes an inbox task: `apply CI recommendation R-{id}`
-8. On the next run, Jarvis applies the approved change, archives the old prompt or config value, and logs the change
+### Primary Flow: Observable Run with Quality Gates (Post-Sprint 2)
 
-**Acceptance**: Operator can approve or reject any CI recommendation using only the morning digest and an inbox task. No direct code edits required. All applied changes are reversible via git history.
+1. Operator commits a task to `jarvis/inbox.md`
+2. Pipeline runs as above
+3. After research completes, Validation Agent scores the output (relevance, completeness, actionability, format)
+4. If score ≥ 0.90: output accepted, pipeline continues
+5. If score 0.60–0.89: research retries once; if retry score ≥ 0.80, accepted; otherwise skipped and flagged
+6. If score < 0.60: research skipped immediately, task record flagged `[HUMAN REVIEW REQUIRED]`
+7. Same scoring applied to obsidian_writer output
+8. All validation scores written to the JSON run log
+9. Morning digest includes a "Run Quality Summary" table showing each agent's score and status
 
-### Secondary Flow: Vault Maintenance
+**Acceptance**: Operator can determine from the digest alone which agents ran, what scores they received, whether any retries occurred, and which (if any) outputs were skipped — without reading raw log files.
 
-1. Vault Maintenance Agent runs automatically each Saturday night
-2. Agent scans the vault for: broken internal links, naming convention violations, missing frontmatter, orphaned empty files, duplicate knowledge notes, and stale records
-3. Low-risk issues (links, naming, empty files) are auto-fixed and committed directly
-4. High-risk issues (duplicates, merge candidates, stale records > 90 days old) are written to a proposal report in the vault
-5. Operator reviews proposals and approves high-risk actions via inbox task
+---
 
-**Acceptance**: After the first Saturday run, at least one auto-fix commit appears. Proposal report is readable in SharePoint. No vault content is destroyed without operator approval.
+### Primary Flow: Bi-Weekly Stats Report (Post-Sprint 3)
 
-### Secondary Flow: On-Demand PR Review
+1. Stats report job runs automatically on Sunday and Tuesday at 11PM UTC
+2. Job reads all JSON run logs since the most recent stats report
+3. Aggregates per-agent metrics: run count, success rate, average confidence score, average latency, average tokens and cost, retry count, escalation count
+4. Produces `jarvis/ci/stats_{date}.md` (human-readable) and `jarvis/ci/stats_{date}.json` (machine-readable)
+5. Both files synced to SharePoint via existing webhook
+6. Operator reads the stats report in SharePoint on Monday or Wednesday morning
 
-1. Operator writes an inbox task with `agents: pr_review` and a GitHub PR URL or PR number
-2. Jarvis fetches the PR diff and description using read-only GitHub API access
-3. Research Agent retrieves relevant vault context (prior decisions, architecture notes)
-4. PR Review Agent produces a structured review: change summary, risk assessment, specific concerns, suggested questions for the PR author, and an approval recommendation
-5. Review is written to the vault as a task record, flagged `[HUMAN REVIEW REQUIRED]`
-6. Operator reads the review and acts on it manually
+**Acceptance**: Stats report appears in SharePoint within 5 minutes of the Sunday/Tuesday 11PM job completing. Report contains data for all agents. On first run, all available logs are included.
 
-**Acceptance**: PR review is in the vault within one run cycle of the inbox task being committed. No comment is posted to GitHub automatically under any circumstances.
+---
 
-### Edge Case: Validation Agent Itself Fails
+### Edge Case: Validation Agent Crash
 
 1. Validation Agent crashes or returns a malformed response
-2. System treats the scored agent's output as passing (assumes 0.90 score)
-3. Validation Agent failure is logged as a separate error entry in the JSON run log
-4. Operator sees a warning in the morning digest that Validation Agent had an error on that run
-5. CI Agent flags the Validation Agent's reliability in the next bi-weekly report
+2. System treats the scored agent's output as passing (synthetic confidence score: 0.90)
+3. Validation Agent failure logged as a separate error entry in the run JSON log with `status: failed`
+4. Operator sees a warning in the morning digest that the Validation Agent had an error on that run
+5. Pipeline continues — the crash never halts a task run
 
-**Acceptance**: A Validation Agent crash never halts a task run. The pipeline continues and the failure is visible in the digest.
+**Acceptance**: A Validation Agent crash never halts the overnight pipeline. The failure is visible in the digest and log.
 
-### Edge Case: CI Recommendation Causes a Regression
+---
 
-1. Operator approves a CI recommendation and Jarvis applies the change
-2. On subsequent runs, Validation Agent scores for the affected agent drop below the pre-change baseline
-3. CI Agent detects the regression in the next bi-weekly cycle
-4. CI Agent produces a rollback recommendation with evidence (before/after score comparison)
-5. Operator approves rollback via inbox task; Jarvis restores the previous prompt or config from git history
+### Edge Case: First Stats Report Run
 
-**Acceptance**: Any applied CI change can be rolled back to the prior state via a single inbox task approval, without manual file editing.
+1. No prior stats report exists in `jarvis/ci/`
+2. Stats reporter scans all available JSON logs regardless of date
+3. Produces report covering the full available history
+4. Subsequent runs use the `analysis_window_end` timestamp from the most recent stats JSON to determine the start of the next window
+
+**Acceptance**: First stats report runs successfully with no prior baseline. No errors due to missing previous report.
 
 ---
 
 ## Functional Requirements
 
-### Structured Logging
+### Phase 0 — Stabilization
 
-- **FR-01**: Every agent execution produces a structured JSON log record containing at minimum: timestamp, run ID, trace ID, workflow ID, agent name, agent version, status, latency in milliseconds, and token usage
-- **FR-02**: JSON log files are written to the vault under `jarvis/logs/{date}/{run_id}.json` and synced to SharePoint via the existing Power Automate webhook
-- **FR-03**: Every run shares a single `run_id` and `trace_id` across all agent executions, enabling end-to-end traceability of a workflow
-- **FR-04**: Log records include optional fields when applicable: prompt ID and version, confidence score, validation pass/fail, retry count, error type, escalation flag, and skip reason
-- **FR-05**: The error type field uses a controlled vocabulary: `api_timeout`, `api_rate_limit`, `validation_fail`, `pii_detected`, `config_missing`, `parse_error`, `tool_error`, `webhook_fail`
+- **FR-P0-01**: Wire real Anthropic API calls into `research.py` using `claude-haiku-4-5`; load prompt from `prompts/research.md` at runtime; implement single retry on API error; feed token counts to existing `token_logger`
+- **FR-P0-02**: Wire real Anthropic API calls into `obsidian_writer.py` using `claude-sonnet-4-6`; load prompt from `prompts/obsidian_writer.md` at runtime; implement single retry on API error; feed token counts to existing `token_logger`
+- **FR-P0-03**: Add `python -m unittest discover -s tests` as a CI step in `jarvis.yml`, running before the main Jarvis job; any test failure must block the run
+- **FR-P0-04**: Unit tests must be updated within each sprint to cover new functionality introduced in that sprint; tests covering only Phase 1 behavior are not sufficient regression coverage for Phase 2 changes
+- **FR-P0-05**: Task IDs use `GITHUB_RUN_ID` when running in GitHub Actions (`GITHUB_ACTIONS=true`); fall back to a UTC timestamp (`YYYYMMDD-HHMMSS`) for local `--dry-run` executions
+- **FR-P0-06**: Add workflow concurrency control to `jarvis.yml`: `group: jarvis-run`, `cancel-in-progress: false`; a second triggered run queues rather than cancelling the in-progress run
+- **FR-P0-07**: Change committed default `pii.mode` in `config/settings.yaml` from `off` to `standard`; PII enforcement applies only to content sent to the Anthropic API (external tenant boundary); SharePoint-bound outputs (JSON logs, Markdown vault files) have no PII enforcement requirement
+- **FR-P0-08**: Update `actions/checkout` and `actions/setup-python` in `jarvis.yml` to versions that natively target Node.js 24; remove the `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` workaround env var
+- **FR-P0-09**: Update `Jarvis_Create_File_Flow` in Power Automate to check whether the target file path already exists in the Obsidian vault before writing; if the file exists, replace its content entirely (full overwrite); if net new, create the file; no append behavior
 
-### Validation Agent
+---
 
-- **FR-06**: The Validation Agent runs inline after every subagent completes, before its output is committed to the TaskResult
-- **FR-07**: The Validation Agent scores output across four dimensions: relevance to the task, completeness, compliance (PII-free, format correct), and format adherence
-- **FR-08**: Scores follow a three-tier decision model: ≥ 0.90 accept; 0.60–0.89 retry agent once; < 0.60 skip agent and escalate
-- **FR-09**: A Validation Agent failure (crash or malformed response) must never halt the task pipeline; the scored agent's output is treated as passing in this case
-- **FR-10**: Validation scores for all agents are included in the morning digest summary
+### Sprint 1 — Structured Logging
 
-### Output Recovery
+- **FR-01**: Every agent execution produces a structured JSON log record written to `jarvis/logs/{YYYY-MM-DD}/{run_id}.json`
+- **FR-02**: Each run shares a single UUID4 `run_id` and `trace_id` generated at the start of the main execution block in `orchestrator/main.py`; both values are passed to all agent calls and log entries for that run
+- **FR-03**: The `RunLog` JSON file contains a `run` object and an `agents` array; the `run` object is written at start and finalized at completion with `completed_at` and `overall_status`
+- **FR-04**: Each `AgentLogEntry` in the `agents` array contains at minimum: `timestamp`, `run_id`, `trace_id`, `agent_name`, `agent_version`, `status`, `latency_ms`, `token_usage` (input, output, total, estimated_cost_usd), `input_summary`, `output_summary`
+- **FR-05**: `input_summary` and `output_summary` are dynamic plain-English descriptions of what each agent received and produced; no PII filtering is required as these fields remain within the Tyson Microsoft 365 tenant (SharePoint)
+- **FR-06**: Optional fields on `AgentLogEntry` include: `error_type` (controlled vocabulary: `api_timeout`, `api_rate_limit`, `validation_fail`, `config_missing`, `parse_error`, `tool_error`, `webhook_fail`), `retry_count`, `escalation_flag`, `human_review_required`; Sprint 2 adds: `confidence_score`, `validation_pass`, `skip_reason`
+- **FR-07**: `trigger_source` field on the `RunLog` is set to: `github_actions_cron` (scheduled run), `inbox_push` (push to inbox.md), or `workflow_dispatch` (manual trigger)
+- **FR-08**: The JSON log file is included in the Power Automate webhook payload alongside existing Markdown vault files and synced to SharePoint under `Jarvis/logs/{date}/{run_id}.json`
+- **FR-09**: Every agent file includes an `agent_version = "1.0.0"` constant; this value is written to `AgentLogEntry.agent_version` on every run
+- **FR-10**: `token_usage.estimated_cost_usd` is populated using current model pricing from the existing `token_logger`; values must be non-zero after Phase 0 LLM wiring is complete
 
-- **FR-11**: When a transient error occurs (timeout, rate limit), the system retries the affected agent once after a 30-second backoff before invoking the Validation Agent
-- **FR-12**: When an agent is skipped due to a low validation score, the TaskResult status is set to `partial` and the skipped agent is listed in the digest with `[HUMAN REVIEW REQUIRED]`
-- **FR-13**: Recovery decisions (retry, skip, escalate) are logged in the JSON run log with the error class and recovery action taken
+---
 
-### CI Agent
+### Sprint 2 — Validation Agent
 
-- **FR-14**: The CI Agent runs on a bi-weekly schedule: Sunday and Wednesday nights
-- **FR-15**: The CI Agent analyzes structured JSON logs from all runs since its last execution
-- **FR-16**: The CI Agent scores agents and workflows across seven weighted dimensions: success rate (25%), output quality (20%), validation pass rate (15%), token efficiency (15%), latency (10%), recovery rate (10%), and human intervention rate (5%)
-- **FR-17**: A recommendation is surfaced only when the projected CI score improvement is ≥ 15%; changes with 5–14% projected improvement are flagged as testing candidates only; changes with < 5% improvement are discarded
-- **FR-18**: Each recommendation in the CI report includes: the specific change proposed, the evidence from logs, the projected score delta, the risk level, and the exact inbox task text to approve it
-- **FR-19**: The CI Agent never modifies prompts, configuration files, or the prompt library index directly; all changes require operator approval via inbox task
-- **FR-20**: The CI Agent produces both a human-readable Markdown report (`jarvis/ci/ci_report_{date}.md`) and a machine-readable JSON scores file (`jarvis/ci/ci_scores_{date}.json`) for use in the next CI cycle
-- **FR-21**: When an approved CI recommendation is applied, the previous prompt or config value is archived with a version suffix before the new value is written
+- **FR-11**: The Validation Agent runs inline after `research` and `obsidian_writer` complete, before their outputs are committed to `TaskResult`; it does NOT run after `gcp_discovery` or `orchestrator`
+- **FR-12**: `gcp_discovery` output is validated structurally only: confirm command exit code is 0 and output is parseable JSON; no Validation Agent call is made
+- **FR-13**: The Validation Agent uses `claude-haiku-4-5` and the prompt at `prompts/validation.md`
+- **FR-14**: The Validation Agent scores output across four dimensions using a composite formula: `confidence_score = (relevance × 0.35) + (completeness × 0.30) + (actionability × 0.25) + (format_adherence × 0.10)`
+  - `relevance`: output addresses the actual task request (0.0–1.0)
+  - `completeness`: all aspects of the task are covered (0.0–1.0)
+  - `actionability`: output gives the operator something concrete to act on (0.0–1.0)
+  - `format_adherence`: output matches the expected structure (0.0–1.0)
+- **FR-15**: Three-tier decision model (all thresholds configurable in `config/settings.yaml` under `validation:`):
+  - `confidence_score ≥ 0.90` (`pass_threshold`): accept output, continue pipeline
+  - `0.60 ≤ confidence_score < 0.90` (`retry_min_threshold`): retry agent once; if retry score ≥ 0.80 (`retry_accept_threshold`), accept; otherwise skip agent and set `escalation_flag: true`
+  - `confidence_score < 0.60`: skip agent immediately, set `escalation_flag: true`, flag `[HUMAN REVIEW REQUIRED]`
+- **FR-16**: When any agent is skipped due to validation failure, set `TaskResult.status = "partial"` and add the skipped agent name and reason to the digest with `[HUMAN REVIEW REQUIRED]` prefix
+- **FR-17**: A Validation Agent crash (exception or malformed response) must never halt the pipeline; return a synthetic `ValidationResult` with `confidence_score: 0.90`, `notes: "SYNTHETIC: Validation Agent error"`, log the crash as a separate `AgentLogEntry` with `agent_name: "validation"` and `status: "failed"`
+- **FR-18**: Setting the environment variable `JARVIS_VALIDATION_OVERRIDE_SCORE` to a float value (e.g., `0.45`) causes the Validation Agent to return that score for all agents in that run; used for testing retry/skip logic without mocking internals
+- **FR-19**: Validation scores for all agents are written to the JSON run log under the relevant `AgentLogEntry` fields: `confidence_score`, `validation_pass`, `retry_count`, `skip_reason`
 
-### Prompt Library
+---
 
-- **FR-22**: All prompts used by agents are registered in a central metadata index at `prompts/library.json`
-- **FR-23**: Each prompt entry records: prompt ID, title, linked agent, use case, tags, approval status, current version, version history with archived file paths, and performance metrics (average confidence score, validation pass rate, average latency, average tokens, sample size, last evaluated date)
-- **FR-24**: When a new prompt version is applied, the previous version is archived to `prompts/versions/` with its version number appended to the filename
-- **FR-25**: Prompt approval status follows four states: `draft`, `approved`, `testing`, `deprecated`
-- **FR-26**: The CI Agent updates performance metrics in `library.json` after each bi-weekly analysis cycle
+### Sprint 3 — Monitoring
 
-### Vault Maintenance Agent
-
-- **FR-27**: The Vault Maintenance Agent runs automatically each Saturday night
-- **FR-28**: The agent auto-fixes without approval: broken internal wikilinks, filename convention violations (kebab-case standard), missing standard frontmatter fields, and orphaned empty files
-- **FR-29**: Auto-fix changes are committed with the message `vault: maintenance auto-fix [jarvis-skip]`
-- **FR-30**: The agent proposes without auto-applying: duplicate knowledge notes, stale task records older than 90 days with no references, notes classified to the wrong folder, and merge candidates
-- **FR-31**: Proposals are written to `jarvis/vault/maintenance_{date}.md` and synced to SharePoint; each proposal includes a proposal ID and the exact inbox task text to approve it
-- **FR-32**: Any file write error during auto-fix aborts all writes for that run; the agent falls back to producing a report-only output
-
-### PR Review Agent
-
-- **FR-33**: The PR Review Agent is triggered by an inbox task containing `agents: pr_review` and a GitHub PR URL or PR number
-- **FR-34**: The agent fetches PR diff and description using read-only GitHub API access only; no write operations to GitHub are permitted under any circumstances
-- **FR-35**: The PR review output includes: a plain-English summary of changes, a risk assessment (HIGH / MED / LOW), specific concerns (security, logic, performance), suggested questions for the PR author, and an approval recommendation
-- **FR-36**: PR review output is written to `jarvis/tasks/{task_id}.md` and flagged `[HUMAN REVIEW REQUIRED]`
-
-### pm_workflow Integration
-
-- **FR-37**: Jarvis Phase 2 writes all vault outputs to a dedicated `Jarvis/` root path within the existing SharePoint document library used by pm_workflow (which writes to `PM/`)
-- **FR-38**: No changes are made to pm_workflow PowerShell scripts; the two systems coexist independently in the same library
-
-### Safety & Compliance (Inherited and Extended)
-
-- **FR-39**: All Phase 1 safety constraints remain in force: no PII, no auto-send, read-only GCP, approved services only
-- **FR-40**: The PR Review Agent's GitHub token must be scoped to read-only access (`repo:read`); the codebase must contain no `PATCH`, `POST`, `PUT`, or `DELETE` calls to the GitHub API
-- **FR-41**: CI recommendations that propose changes to safety-related logic (PII guard, auto-send prohibition) are automatically classified as HIGH risk regardless of their projected score improvement
+- **FR-20**: The morning digest produced by `obsidian_writer.py` includes a new "Run Quality Summary" section after the task summary: a Markdown table with one row per agent showing agent name, confidence score (or "N/A" if not validated), pass/fail status, retry count, and escalation flag
+- **FR-21**: The stats report job is a separate GitHub Actions job named `run-stats-report` with cron schedule `0 23 * * 0,2` (Sunday and Tuesday at 11PM UTC)
+- **FR-22**: The stats report job runs `python orchestrator/main.py --mode stats_report`; the `--mode` flag handler routes to the stats reporter without executing the task pipeline
+- **FR-23**: The stats reporter reads all JSON log files in `jarvis/logs/` within the analysis window; on the first run (no prior stats report exists), it analyzes all available logs; on subsequent runs, it reads `analysis_window_end` from the most recent `jarvis/ci/stats_*.json` to determine the window start
+- **FR-24**: The stats report includes per-agent rows for all agents that appear in the log window: `orchestrator`, `research`, `gcp_discovery`, `obsidian_writer`, `validation`; each row contains: run count, success rate, average confidence score (validated agents only; "N/A" for others), average latency (ms), average tokens per run, estimated cost for the period, retry count, escalation count
+- **FR-25**: The stats reporter writes two output files: `jarvis/ci/stats_{YYYY-MM-DD}.md` (human-readable Markdown) and `jarvis/ci/stats_{YYYY-MM-DD}.json` (machine-readable, includes `analysis_window_start` and `analysis_window_end` timestamps)
+- **FR-26**: Both stats output files are included in the Power Automate webhook payload and synced to SharePoint; the stats job uses the same `post_files()` utility as the main run
+- **FR-27**: The stats reporter requires no Anthropic API call; it is pure log aggregation using the Python standard library and `pyyaml`
 
 ---
 
@@ -188,26 +176,29 @@ Expand Jarvis from a task executor into a self-monitoring, continuously improvin
 
 | Criterion | Measure |
 |-----------|---------|
-| Full run observability | Operator can determine from the vault alone which agents ran, what scores they received, and whether any failures occurred — for any run in the past 30 days |
-| Quality gate effectiveness | Zero instances of an agent output failing silently; all suboptimal outputs are either retried, skipped, or escalated visibly in the digest |
-| CI recommendation quality | At least one actionable improvement recommendation appears in each bi-weekly CI report after the first 4 weeks of data accumulation |
-| Approval loop reliability | An operator-approved CI recommendation is applied correctly on the next Jarvis run, with the prior state preserved and recoverable |
-| Vault maintenance coverage | After the first Saturday run, the vault has zero broken internal links and all files conform to naming conventions |
-| PR review turnaround | A PR review inbox task committed before 11 PM produces a complete review in the vault by the following morning |
-| Prompt library completeness | All agent prompts are registered in `library.json` with performance data populated after the first two CI cycles |
-| Regression safety | Any applied CI change that causes validation scores to drop is detected by the next CI cycle and a rollback recommendation is produced |
+| Real LLM execution | Token counts in every agent log entry are non-zero after Phase 0 completes |
+| Regression safety | All 50+ existing unit tests pass in CI on every push; new tests cover each sprint's functionality |
+| Run uniqueness | No two vault task records share the same task ID across any sequence of runs |
+| Log availability | JSON log file exists in SharePoint within 5 minutes of every overnight run completing |
+| Full run observability | Operator can determine from the vault alone which agents ran, token costs, and any failures — for any run in the past 30 days |
+| Quality gate effectiveness | Zero silent agent failures after Sprint 2; all suboptimal outputs visible in the digest with `[HUMAN REVIEW REQUIRED]` flag |
+| Digest quality visibility | Morning digest includes Run Quality Summary table on every run after Sprint 2 |
+| Stats report availability | Stats report appears in SharePoint by Monday and Wednesday morning after the respective Sunday/Tuesday runs |
+| Vault note integrity | Power Automate flow correctly updates existing vault notes without creating duplicate files |
+| Zero regression | Existing Phase 1 agent behavior for valid inputs is unchanged by any Phase 2 modification |
 
 ---
 
 ## Assumptions
 
 - Phase 1 (001-jarvis-mvp) is complete and stable; all existing agents, contracts, and the Power Automate webhook are functioning
-- The existing Power Automate webhook payload can be extended to include JSON log files alongside Markdown vault files with no structural changes to the flow
-- `ubuntu-latest` GitHub Actions runners have Python 3.12 pre-installed; `setup-python` with pip caching is sufficient for dependency management
-- The SharePoint document library has sufficient storage for structured JSON log files at the projected volume (~40 records/week)
-- A read-only GitHub token (`repo:read` scope) can be added to GitHub Actions secrets without organizational approval barriers
+- `prompts/research.md` and `prompts/obsidian_writer.md` contain valid system prompts ready for runtime use; no new prompt authoring is required in Phase 0 beyond confirming current prompt files work with the API
+- The `ANTHROPIC_API_KEY` secret in GitHub Actions is valid for real API calls (the current workflow only smoke-tests connectivity; Phase 0 wiring will be the first real call)
+- `ubuntu-latest` GitHub Actions runners have Python 3.12 pre-installed; no new dependencies are required
+- The Power Automate flow has access to a "check file existence" action or equivalent logic to implement upsert behavior
 - The operator reviews vault content in SharePoint or Obsidian at least once per weekday morning
-- pm_workflow PowerShell scripts write exclusively to paths under `PM/` in the SharePoint library; no naming collisions with the `Jarvis/` path exist
+- JSON log files at ~8–12KB per run will not exceed Power Automate payload limits
+- The Tyson Microsoft 365 tenant boundary is the PII enforcement boundary; content within that boundary (SharePoint, Power Automate, OneDrive) requires no PII enforcement
 
 ---
 
@@ -215,24 +206,26 @@ Expand Jarvis from a task executor into a self-monitoring, continuously improvin
 
 | Constraint | Impact |
 |------------|--------|
-| No new approved services | All Phase 2 functionality must use: `anthropic`, `google-cloud-bigquery`, `requests`, `pyyaml`. GitHub API calls use `requests` (already approved). |
-| No auto-deploy of CI changes | CI Agent is a recommendation engine only; every production-impacting change requires an explicit inbox task approval from the operator |
-| No GitHub writes | PR Review Agent has read-only GitHub API access; no PR comments, reviews, or labels may be posted automatically |
-| Vault Maintenance high-risk requires approval | Any vault action that modifies or deletes existing note content requires operator approval via inbox task |
-| Phase 1 contracts unchanged | JSON log schema is additive; existing Markdown outputs, Power Automate payload structure, and inbox format are not modified |
+| No new approved dependencies | All Phase 2 functionality must use existing packages: `anthropic`, `google-cloud-bigquery`, `requests`, `pyyaml` |
+| No auto-deploy of any changes | All agent outputs are vault-only; no automated writes to external systems |
+| Phase 0 must complete before Sprint 1 | LLM wiring is a prerequisite for meaningful token counts in logs; regression gate is a prerequisite for safe pipeline modifications |
 | GCP service account still pending | GCP Discovery Agent remains daytime-only; this constraint carries forward from Phase 1 |
+| GitHub Actions runner has no SharePoint access | Vault Maintenance (scanning SharePoint vault files) is not possible in this phase; deferred to Phase 3 |
+| Validation Agent validates only research and obsidian_writer | gcp_discovery uses structural validation only; orchestrator output is not scored |
 
 ---
 
-## Out of Scope (Phase 2)
+## Out of Scope — Phase 2
 
-- Absorbing pm_workflow PowerShell script logic into a Jarvis agent (Phase 3+)
-- Overnight GCP Discovery Agent runs (blocked by pending service account approval)
-- Email Classification Agent for auto-ingesting inbound Outlook requests
-- Any write operations to GitHub (PR comments, issue labels, status checks)
-- Real-time monitoring or alerting (Slack, email, Teams notifications)
-- Multi-operator support or role-based access control
-- Automated A/B testing of prompt variants without operator involvement
+The following were considered and explicitly deferred to Phase 3:
+
+| Feature | Reason for Deferral |
+|---------|---------------------|
+| CI recommendation engine | Requires weeks of Validation Agent data to produce meaningful recommendations; premature to build before baseline data exists |
+| PR Review Agent | Clean standalone feature; deprioritized in favor of foundational observability |
+| Vault Maintenance — auto-fix (4A) | GitHub Actions runner cannot access SharePoint vault files; requires a SharePoint read path design not yet defined |
+| Vault Maintenance — proposals (4B) | Depends on 4A and on Validation Agent being calibrated; both Phase 3 |
+| Prompt Library (`library.json`, `prompts/versions/`) | Its main consumer is the CI recommendation engine; building it without a consumer adds maintenance burden with no value |
 
 ---
 
@@ -240,13 +233,11 @@ Expand Jarvis from a task executor into a self-monitoring, continuously improvin
 
 | Entity | Description |
 |--------|-------------|
-| Run Log | Structured JSON file capturing every agent execution within a single Jarvis run; keyed by `run_id` |
-| Run ID | UUID generated at the start of each Jarvis invocation; shared across all agent executions in that run |
-| Trace ID | UUID linking all log entries for a single workflow; enables end-to-end traceability across agents |
-| Validation Result | Scored assessment of a single agent output: confidence score, pass/fail, quality dimension breakdown, retry recommendation |
-| CI Report | Human-readable Markdown file produced bi-weekly; contains ranked improvement recommendations with evidence and approval instructions |
-| CI Scores File | Machine-readable JSON produced alongside the CI report; stores scoring baselines for the next CI cycle |
-| Prompt Library Index | `prompts/library.json` — central metadata registry for all agent prompts; includes version history and performance metrics |
-| Prompt Version Archive | Historical copy of a prompt stored in `prompts/versions/` when a new version is applied |
-| Maintenance Report | Vault Maintenance Agent output listing high-risk proposals that require operator approval before execution |
-| PR Review | Structured task record produced by the PR Review Agent; always flagged `[HUMAN REVIEW REQUIRED]` |
+| RunLog | JSON file capturing a single Jarvis invocation; contains one `run` object and an `agents` array; keyed by `run_id` |
+| Run ID | UUID4 generated at the start of each invocation; shared across all AgentLogEntry records in the run |
+| Trace ID | UUID4 linking all log entries for a single workflow; same as `run_id` for single-workflow runs |
+| AgentLogEntry | One record per agent execution within a run; appended after each agent completes |
+| TokenUsage | Embedded in AgentLogEntry; records input/output/total tokens and estimated USD cost |
+| ValidationResult | Scored assessment of a single agent output; composite score drives accept/retry/skip decision |
+| QualityDimensions | Per-dimension breakdown within ValidationResult: relevance, completeness, actionability, format_adherence |
+| StatsReport | Bi-weekly aggregation of AgentLogEntry records; one row per agent per analysis window |

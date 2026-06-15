@@ -1,3 +1,5 @@
+> **DEFERRED TO PHASE 3** — Prompt Library has no consumer in Phase 2. Archived here for reference; do not implement until Phase 3 planning begins.
+
 # Contract: Prompt Library Schema
 
 **Feature**: 003-phase2-agent-ecosystem

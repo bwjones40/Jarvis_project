@@ -2,12 +2,24 @@
 
 from __future__ import annotations
 
-from time import perf_counter
+import os
+from pathlib import Path
+from time import perf_counter, sleep
 from typing import Any
+
+try:
+    import anthropic
+except ModuleNotFoundError:  # pragma: no cover - local fallback when dependency is absent
+    anthropic = None
 
 from orchestrator.utils.pii_guard import get_pii_mode, sanitize_text
 from orchestrator.utils.token_logger import log_agent_run
 from orchestrator.utils.vault_reader import search_notes
+
+agent_version = "1.0.0"
+
+RESEARCH_PROMPT = Path("prompts/research.md").read_text(encoding="utf-8")
+client = anthropic.Anthropic() if anthropic is not None and os.getenv("ANTHROPIC_API_KEY", "").strip() else None
 
 
 def run_research(
@@ -32,13 +44,22 @@ def run_research(
             "cache_hit": True,
         }
     else:
-        summary_lines = [f"- {sanitize_text(note['title'] or note['path'], mode=pii_mode)}" for note in notes] or ["- No matching vault notes found."]
-        usage = type("Usage", (), {"input_tokens": 0, "output_tokens": 0})()
-        output = {
-            "context_summary": "Relevant vault context:\n" + "\n".join(summary_lines),
-            "source_vault_paths": [note["path"] for note in notes],
-            "cache_hit": False,
-        }
+        response = _call_research_model(_sanitize_for_anthropic(task["request"]))
+        if response is None:
+            summary_lines = [f"- {sanitize_text(note['title'] or note['path'], mode=pii_mode)}" for note in notes] or ["- No matching vault notes found."]
+            usage = type("Usage", (), {"input_tokens": 0, "output_tokens": 0})()
+            output = {
+                "context_summary": "Relevant vault context:\n" + "\n".join(summary_lines),
+                "source_vault_paths": [note["path"] for note in notes],
+                "cache_hit": False,
+            }
+        else:
+            usage = getattr(response, "usage", type("Usage", (), {"input_tokens": 0, "output_tokens": 0})())
+            output = {
+                "context_summary": _extract_response_text(getattr(response, "content", [])) or "Relevant vault context unavailable.",
+                "source_vault_paths": [note["path"] for note in notes],
+                "cache_hit": False,
+            }
 
     task_result["research_summary"] = output["context_summary"]
     task_result["research_sources"] = output["source_vault_paths"]
@@ -62,3 +83,38 @@ def _cap_note_content(content: str, max_tokens: int) -> str:
     if max_tokens <= 0 or len(words) <= max_tokens:
         return content
     return " ".join(words[:max_tokens]) + "\n\n[Context truncated to configured note token cap.]"
+
+
+def _call_research_model(prompt_text: str) -> Any | None:
+    if client is None or anthropic is None:
+        return None
+    try:
+        return client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=1024,
+            system=RESEARCH_PROMPT,
+            messages=[{"role": "user", "content": prompt_text}],
+        )
+    except anthropic.APIError:
+        sleep(10)
+        return client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=1024,
+            system=RESEARCH_PROMPT,
+            messages=[{"role": "user", "content": prompt_text}],
+        )
+
+
+def _extract_response_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    parts: list[str] = []
+    for item in content or []:
+        text = getattr(item, "text", None)
+        if text:
+            parts.append(str(text))
+    return "\n".join(parts).strip()
+
+
+def _sanitize_for_anthropic(text: str) -> str:
+    return sanitize_text(text, mode="strict")

@@ -2,16 +2,29 @@
 
 from __future__ import annotations
 
+import json
+import os
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from time import sleep
 from typing import Any
 from uuid import uuid4
+
+try:
+    import anthropic
+except ModuleNotFoundError:  # pragma: no cover - local fallback when dependency is absent
+    anthropic = None
 
 from orchestrator.utils.pii_guard import get_pii_mode, sanitize_text
 from orchestrator.utils.token_logger import calculate_cost, log_agent_run
 from orchestrator.utils.usage_history import build_usage_entry, load_usage_history
 from orchestrator.utils.vault_reader import note_exists, read_note
+
+agent_version = "1.0.0"
+
+OBSIDIAN_WRITER_PROMPT = Path("prompts/obsidian_writer.md").read_text(encoding="utf-8")
+client = anthropic.Anthropic() if anthropic is not None and os.getenv("ANTHROPIC_API_KEY", "").strip() else None
 
 
 def build_vault_outputs(
@@ -26,13 +39,20 @@ def build_vault_outputs(
         return [{"vault_path": digest_path, "content": _build_empty_digest()}]
 
     pii_mode = get_pii_mode(settings)
-    usage = type("Usage", (), {"input_tokens": 0, "output_tokens": 0})()
     task_result["draft_communications"] = _stage_draft_communications(task_result, task or {}, pii_mode)
     task_file_path = f"{vault_settings.get('tasks_dir', 'jarvis/tasks')}/{task_result['task_id']}.md"
+    generated_markdown, usage = _generate_llm_markdown(
+        task_result=task_result,
+        task=task or {},
+        settings=settings,
+        vault_root=vault_root,
+        task_file_path=task_file_path,
+        digest_path=digest_path,
+    )
     task_result["agents_executed"].append(
         log_agent_run(
             agent_name="obsidian",
-            model=settings.get("models", {}).get("subagent", "claude-haiku-4-5"),
+            model=settings.get("models", {}).get("orchestrator", "claude-sonnet-4-6"),
             usage=usage,
             duration=0.0,
             output={
@@ -51,13 +71,17 @@ def build_vault_outputs(
         *(item["vault_path"] for item in lesson_files),
         *(item["vault_path"] for item in knowledge_files),
     ]
-    task_markdown = _build_task_record(task_result, task or {}, pii_mode)
-    digest_markdown = _build_digest(
-        task_result,
-        vault_root=vault_root,
-        tasks_dir=vault_settings.get("tasks_dir", "jarvis/tasks"),
-        pii_mode=pii_mode,
-    )
+    task_markdown = generated_markdown.get("task_record_markdown") if generated_markdown else None
+    digest_markdown = generated_markdown.get("digest_markdown") if generated_markdown else None
+    if not task_markdown:
+        task_markdown = _build_task_record(task_result, task or {}, pii_mode)
+    if not digest_markdown:
+        digest_markdown = _build_digest(
+            task_result,
+            vault_root=vault_root,
+            tasks_dir=vault_settings.get("tasks_dir", "jarvis/tasks"),
+            pii_mode=pii_mode,
+        )
     outputs = [
         {
             "vault_path": task_file_path,
@@ -133,6 +157,7 @@ def _build_digest(task_result: dict[str, Any], vault_root: str, tasks_dir: str, 
     open_questions = [f"- {item}" for item in task_result["clarifications_needed"]] or ["- (none)"]
     knowledge_lines = [f"- {path}" for path in task_result.get("knowledge_updates", [])] or ["- (none)"]
     learning_lines = [f"- {run['agent_name']}: completed" for run in task_result["agents_executed"]] or ["- (none)"]
+    quality_rows = _build_quality_rows(task_result["agents_executed"])
     completed_lines = (
         [f"- {task_result['task_id']} — {sanitize_text(task_result['task_title'], mode=pii_mode)}"]
         if task_result["status"] == "completed"
@@ -171,6 +196,12 @@ def _build_digest(task_result: dict[str, Any], vault_root: str, tasks_dir: str, 
             "## Knowledge Notes Updated",
             "",
             *knowledge_lines,
+            "",
+            "## Run Quality Summary",
+            "",
+            "| Agent | Confidence | Validation | Retry Count | Escalation |",
+            "|-------|------------|------------|-------------|------------|",
+            *quality_rows,
             "",
             "## Key Learnings",
             "",
@@ -379,6 +410,157 @@ def _format_drafts(drafts: list[dict[str, str]]) -> str:
             ]
         )
     return "\n".join(lines).strip()
+
+
+def _build_quality_rows(agent_runs: list[dict[str, Any]]) -> list[str]:
+    rows: list[str] = []
+    for run in agent_runs:
+        score = run.get("confidence_score")
+        validation_pass = run.get("validation_pass")
+        retry_count = run.get("retry_count", 0)
+        escalation_flag = run.get("escalation_flag", False)
+        score_text = f"{float(score):.2f}" if score is not None else "N/A"
+        validation_text = "PASS" if validation_pass is True else ("FAIL" if validation_pass is False else "N/A")
+        rows.append(
+            f"| {run.get('agent_name', '')} | {score_text} | {validation_text} | {retry_count} | {str(bool(escalation_flag))} |"
+        )
+    return rows or ["| (none) | N/A | N/A | 0 | False |"]
+
+
+def _generate_llm_markdown(
+    task_result: dict[str, Any],
+    task: dict[str, Any],
+    settings: dict[str, Any],
+    vault_root: str,
+    task_file_path: str,
+    digest_path: str,
+) -> tuple[dict[str, str] | None, Any]:
+    empty_usage = type("Usage", (), {"input_tokens": 0, "output_tokens": 0})()
+    response = _call_obsidian_writer_model(
+        _build_obsidian_writer_payload(
+            task_result=task_result,
+            task=task,
+            settings=settings,
+            vault_root=vault_root,
+            task_file_path=task_file_path,
+            digest_path=digest_path,
+        )
+    )
+    if response is None:
+        return None, empty_usage
+
+    content = _extract_response_text(getattr(response, "content", []))
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        return None, getattr(response, "usage", empty_usage)
+    if not isinstance(parsed, dict):
+        return None, getattr(response, "usage", empty_usage)
+
+    task_markdown = parsed.get("task_record_markdown")
+    digest_markdown = parsed.get("digest_markdown")
+    if not isinstance(task_markdown, str) or not isinstance(digest_markdown, str):
+        return None, getattr(response, "usage", empty_usage)
+    return {"task_record_markdown": task_markdown, "digest_markdown": digest_markdown}, getattr(response, "usage", empty_usage)
+
+
+def _build_obsidian_writer_payload(
+    task_result: dict[str, Any],
+    task: dict[str, Any],
+    settings: dict[str, Any],
+    vault_root: str,
+    task_file_path: str,
+    digest_path: str,
+) -> str:
+    weekly_rollup = _build_weekly_rollup(task_result, vault_root, settings.get("vault", {}).get("tasks_dir", "jarvis/tasks"))
+    payload = {
+        "instructions": {
+            "return_json_only": True,
+            "required_keys": ["task_record_markdown", "digest_markdown"],
+            "task_record_requirements": [
+                "Include Request, Output, Token Usage, Knowledge Updates, and Draft Communications sections.",
+                "Every draft communication must remain prefixed with [HUMAN APPROVAL REQUIRED].",
+            ],
+            "digest_requirements": [
+                "Include Tasks Completed, Tasks Requiring Attention, Usage, Weekly Cost Rollup, Knowledge Notes Updated, Key Learnings, Draft Communications, and Open Questions sections.",
+                "Do not describe any auto-send capability.",
+            ],
+        },
+        "task": {
+            "title": _sanitize_for_anthropic(task.get("title", task_result.get("task_title", ""))),
+            "request": _sanitize_for_anthropic(task.get("request", task_result.get("task", {}).get("request", ""))),
+            "mode": task_result.get("mode"),
+            "status": task_result.get("status"),
+        },
+        "task_result": {
+            "task_id": task_result.get("task_id"),
+            "task_title": _sanitize_for_anthropic(task_result.get("task_title", "")),
+            "run_timestamp": task_result.get("run_timestamp"),
+            "output_summary": _sanitize_for_anthropic(task_result.get("output_summary", "")),
+            "clarifications_needed": [_sanitize_for_anthropic(item) for item in task_result.get("clarifications_needed", [])],
+            "knowledge_updates": list(task_result.get("knowledge_updates", [])),
+            "draft_communications": [
+                {
+                    "channel": draft.get("channel", ""),
+                    "body": _sanitize_for_anthropic(draft.get("body", "")),
+                }
+                for draft in task_result.get("draft_communications", [])
+            ],
+            "agents_executed": [
+                {
+                    "agent_name": run.get("agent_name"),
+                    "model": run.get("model"),
+                    "input_tokens": run.get("input_tokens", 0),
+                    "output_tokens": run.get("output_tokens", 0),
+                    "duration_seconds": run.get("duration_seconds", 0.0),
+                    "output": _sanitize_for_anthropic(json.dumps(run.get("output", {}), ensure_ascii=True)),
+                    "errors": [_sanitize_for_anthropic(err) for err in run.get("errors", [])],
+                }
+                for run in task_result.get("agents_executed", [])
+            ],
+        },
+        "weekly_rollup": weekly_rollup,
+        "output_paths": {
+            "task_record": task_file_path,
+            "digest": digest_path,
+        },
+    }
+    return json.dumps(payload, indent=2)
+
+
+def _call_obsidian_writer_model(prompt_text: str) -> Any | None:
+    if client is None or anthropic is None:
+        return None
+    try:
+        return client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=2048,
+            system=OBSIDIAN_WRITER_PROMPT,
+            messages=[{"role": "user", "content": prompt_text}],
+        )
+    except anthropic.APIError:
+        sleep(10)
+        return client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=2048,
+            system=OBSIDIAN_WRITER_PROMPT,
+            messages=[{"role": "user", "content": prompt_text}],
+        )
+
+
+def _extract_response_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    parts: list[str] = []
+    for item in content or []:
+        text = getattr(item, "text", None)
+        if text:
+            parts.append(str(text))
+    return "\n".join(parts).strip()
+
+
+def _sanitize_for_anthropic(text: str) -> str:
+    return sanitize_text(text, mode="strict")
 
 
 def _today_string() -> str:

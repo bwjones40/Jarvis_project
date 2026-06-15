@@ -1,235 +1,185 @@
-# Tasks: Jarvis Phase 2 — Agent Ecosystem Expansion
+# Tasks: Jarvis Phase 2 — Agent Ecosystem Foundation
 
-**Feature**: 003-phase2-agent-ecosystem
-**Generated**: 2026-06-14
+**Feature**: 002-phase2-agent-ecosystem
+**Generated**: 2026-06-15
 **Plan**: [plan.md](plan.md) | **Spec**: [spec.md](spec.md) | **Data Model**: [data-model.md](data-model.md)
 
 ---
 
 ## User Stories
 
-| ID | Story | Priority | Sprint | FR Coverage |
-|----|-------|----------|--------|-------------|
-| US1 | Every agent run produces a structured, queryable JSON log synced to SharePoint | P1 | 1 | FR-01–05 |
-| US2 | Agent outputs are scored for quality; failing outputs retry or skip gracefully | P1 | 2 | FR-06–13 |
-| US3 | CI Agent analyzes logs bi-weekly and produces human-approvable improvement recommendations | P2 | 3 | FR-14–26 |
-| US4 | Vault Maintenance Agent auto-fixes low-risk issues and proposes high-risk changes weekly | P2 | 4 | FR-27–32 |
-| US5 | On-demand PR reviews are triggered via inbox task and written to vault only | P3 | 5 | FR-33–36 |
+| ID | Story | Priority | Phase | FR Coverage |
+|----|-------|----------|-------|-------------|
+| US1 | Every agent run produces a structured JSON log synced to SharePoint | P1 | 3 | FR-01–10 |
+| US2 | Agent outputs are scored; failing outputs retry or skip gracefully; quality visible in digest | P1 | 4 | FR-11–19 |
+| US3 | Bi-weekly stats report aggregates run data; operator sees trend visibility | P2 | 5 | FR-20–27 |
 
 ---
 
 ## Story Completion Order
 
 ```
-US1 (Logging) → US2 (Validation) → US3 (CI + Prompt Library)
-                                  → US4 (Vault Maintenance)  [parallel with US3 after US2]
-                                  → US5 (PR Review)          [parallel with US3/US4 after US2]
+Phase 0 Stabilization (Phase 2 below) — all blocking
+    ↓
+US1 (Structured Logging) → US2 (Validation Agent + Digest Quality) → US3 (Stats Report)
 ```
 
-US3, US4, and US5 can begin in parallel once US2 is complete. US1 must fully complete before US2.
+US3 can begin once US1 is complete (it reads the JSON logs US1 produces). US2 must complete before US3 for confidence scores to appear in stats data.
 
 ---
 
 ## Phase 1: Setup
 
-*Project initialization tasks required before any user story work begins.*
+*Agent version constants and settings scaffolding required before any sprint work begins.*
 
 - [ ] T001 Add `agent_version = "1.0.0"` constant to `orchestrator/agents/orchestrator.py`
 - [ ] T002 [P] Add `agent_version = "1.0.0"` constant to `orchestrator/agents/research.py`
 - [ ] T003 [P] Add `agent_version = "1.0.0"` constant to `orchestrator/agents/gcp_discovery.py`
 - [ ] T004 [P] Add `agent_version = "1.0.0"` constant to `orchestrator/agents/obsidian_writer.py`
-- [ ] T005 Add `logging:` section to `config/settings.yaml` with keys: `log_dir: "jarvis/logs"`, `ci_dir: "jarvis/ci"`, `vault_dir: "jarvis/vault"`
-- [ ] T006 Create `prompts/versions/` directory and copy existing prompts: `orchestrator_v1.0.md`, `research_v1.0.md`, `gcp_discovery_v1.0.md`, `obsidian_writer_v1.0.md`
-- [ ] T007 Create `prompts/library.json` initialized with 4 entries (orchestrator, research, gcp_discovery, obsidian_writer) per schema in `contracts/prompt-library-schema.md`; all `status: "approved"`, `sample_size: 0`, `last_evaluated: today`
+- [ ] T005 Add `logging:` section to `config/settings.yaml` with keys: `log_dir: "jarvis/logs"`, `stats_dir: "jarvis/ci"`
 
-**Phase 1 complete when**: All 4 agents have `agent_version`, settings.yaml has `logging:` block, `prompts/library.json` exists with 4 valid entries, `prompts/versions/` contains 4 archived prompt files.
+**Phase 1 complete when**: All 4 agent files have `agent_version = "1.0.0"` and `settings.yaml` has the `logging:` block.
 
 ---
 
-## Phase 2: Foundational
+## Phase 2: Foundational (Phase 0 Stabilization)
 
-*Shared infrastructure that blocks all user stories.*
+*Eight stabilization fixes that must land before any sprint task. No sprint work may be merged until all Phase 2 items pass their validation step.*
 
-- [ ] T008 Create `orchestrator/utils/run_logger.py` with function stubs: `start_run()`, `log_agent_entry()`, `finalize_run()` — return types matching `RunLog` and `AgentLogEntry` from `data-model.md`
-- [ ] T009 Generate UUID4 `run_id` and `trace_id` in `orchestrator/main.py` at the top of the main execution block; pass both to all downstream agent calls
-- [ ] T010 Update `orchestrator/utils/power_automate.py` `post_files()` to accept and include JSON log files alongside Markdown files in the webhook payload `files[]` array
-- [ ] T011 Update `orchestrator/utils/inbox_parser.py` to recognize three new task types: `ci_approval` (title matches `apply CI recommendation R-\d+`), `vault_approval` (title matches `apply vault maintenance proposal M-\d+`), `pr_review` (agents field contains `pr_review`); add parsed fields for each type
+- [ ] T006 Wire real Anthropic API call into `orchestrator/agents/research.py`: import `anthropic` and `pathlib`; load `prompts/research.md` at module level; construct `anthropic.Anthropic()` client; replace deterministic output with `client.messages.create(model="claude-haiku-4-5", ...)`; wrap in try/except with single retry on `anthropic.APIError` (10-second sleep); pass `response.usage.input_tokens` and `response.usage.output_tokens` to `token_logger.log_agent_run()`
+- [ ] T007 Wire real Anthropic API call into `orchestrator/agents/obsidian_writer.py`: same pattern as T006 but uses `claude-sonnet-4-6` and loads `prompts/obsidian_writer.md`; digest and task record content now LLM-generated, not template
+- [ ] T008 Add `python -m unittest discover -s tests -v` as a new step in `.github/workflows/jarvis.yml` immediately before the `Run Jarvis` step; any test failure must block the remainder of the job
+- [ ] T009 Fix task ID in `orchestrator/agents/orchestrator.py` `_build_task_id()`: use `os.environ.get("GITHUB_RUN_ID")` as prefix when running in Actions; fall back to `datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")` for local runs; format: `task-{prefix}-{slug}`
+- [ ] T010 Add concurrency control to `.github/workflows/jarvis.yml` `run-jarvis` job: `concurrency: group: jarvis-run` and `cancel-in-progress: false`; second triggered run queues, does not cancel
+- [ ] T011 Change committed default in `config/settings.yaml` from `pii: mode: off` to `pii: mode: standard`; run full test suite after this change to confirm no regressions
+- [ ] T012 Update `.github/workflows/jarvis.yml`: pin `actions/checkout` and `actions/setup-python` to latest patch versions that natively target Node.js 24; remove `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` env var from `run-jarvis` job
+- [ ] T013 Update `Jarvis_Create_File_Flow` in Power Automate to check SharePoint file existence before writing: if file exists at target path, replace content (full overwrite); if new, create; document the updated flow configuration in `docs/jarvis-build-documentation.md` under Power Automate section
 
-**Phase 2 complete when**: `run_id` and `trace_id` are generated on every run, `power_automate.py` can include JSON files in payload, inbox parser recognizes all three new task types without breaking existing task parsing.
+**Phase 2 complete when**: T006 produces non-zero token counts in dry-run output; T007 generates LLM prose in digest; T008 shows "Run unit tests" step in Actions log; T009 produces unique task IDs across runs; T010 queues concurrent runs; T011 passes full test suite; T012 eliminates Node.js 20 warning; T013 prevents duplicate vault files on re-run.
 
 ---
 
 ## Phase 3: US1 — Structured Logging
 
-*Goal: Every agent run produces a complete, schema-valid JSON log file at `jarvis/logs/{date}/{run_id}.json` that is synced to SharePoint.*
+*Goal: Every agent run produces a complete, schema-valid JSON log file at `jarvis/logs/{date}/{run_id}.json` synced to SharePoint.*
 
-**Independent test criteria**: Run Jarvis with any valid inbox task; confirm JSON log exists in SharePoint with all required fields per `contracts/run-log-schema.md`. Verify `run_id` links all agent entries. Verify `token_usage.estimated_cost_usd` is populated.
+**Independent test criteria**: Run Jarvis with any valid inbox task; confirm JSON log exists in SharePoint with all required fields per `contracts/run-log-schema.md`; confirm `run_id` links all agent entries; confirm `token_usage.estimated_cost_usd` is non-zero for LLM-backed agents.
 
-- [ ] T012 [US1] Implement `run_logger.start_run(workflow_id, trigger_source, task_id=None)` in `orchestrator/utils/run_logger.py`: generates UUID4 `run_id` and `trace_id`, creates `jarvis/logs/{YYYY-MM-DD}/{run_id}.json` with `run` object, returns `RunContext` dataclass
-- [ ] T013 [US1] Implement `run_logger.log_agent_entry(run_context, entry_dict)` in `orchestrator/utils/run_logger.py`: appends one `AgentLogEntry` dict to the `agents` array in the JSON file; handles file-not-found gracefully
-- [ ] T014 [US1] Implement `run_logger.finalize_run(run_context, overall_status)` in `orchestrator/utils/run_logger.py`: writes `completed_at` timestamp and `overall_status` to the `run` object in the JSON file
-- [ ] T015 [US1] Integrate `run_logger` into `orchestrator/main.py`: call `start_run()` before the agent pipeline; call `log_agent_entry()` after each agent completes (orchestrator, research, gcp_discovery, obsidian_writer); call `finalize_run()` at the end with the correct `overall_status`
-- [ ] T016 [US1] Update `orchestrator/utils/token_logger.py` `log_agent_run()` to share `input`, `output`, `total`, and `estimated_cost_usd` fields with the `AgentLogEntry` written by `run_logger` (pass token data to `log_agent_entry` call in `main.py`)
-- [ ] T017 [US1] Update `orchestrator/utils/power_automate.py` `post_files()` call in `main.py` to include `jarvis/logs/{date}/{run_id}.json` in the `files[]` array alongside existing Markdown vault files
-- [ ] T018 [US1] Add `trigger_source` detection to `orchestrator/main.py`: set to `github_actions_cron` if `GITHUB_ACTIONS=true` and no `GITHUB_EVENT_NAME`, `inbox_push` if event is `push`, `workflow_dispatch` if event is `workflow_dispatch`
+- [ ] T014 [US1] Create `orchestrator/utils/run_logger.py` with `RunContext` dataclass (fields: `run_id`, `trace_id`, `log_path`) and stub for `start_run(workflow_id, trigger_source, task_id=None) -> RunContext`: generates UUID4 `run_id` and `trace_id`, creates `jarvis/logs/{YYYY-MM-DD}/{run_id}.json` with the `run` object, returns `RunContext`
+- [ ] T015 [P] [US1] Implement `run_logger.log_agent_entry(run_context, entry: dict) -> None` in `orchestrator/utils/run_logger.py`: opens the JSON file, appends one `AgentLogEntry` dict to the `agents` array, re-writes the file; handles file-not-found with a warning log rather than raising
+- [ ] T016 [P] [US1] Implement `run_logger.finalize_run(run_context, overall_status: str) -> None` in `orchestrator/utils/run_logger.py`: opens the JSON file, writes `completed_at` (UTC ISO 8601) and `overall_status` to the `run` object, re-writes the file
+- [ ] T017 [US1] Integrate `run_logger` into `orchestrator/main.py`: call `start_run()` before the agent pipeline; detect `trigger_source` from env vars (`GITHUB_ACTIONS`, `GITHUB_EVENT_NAME`); call `log_agent_entry()` after each agent completes with timing, status, and token data; call `finalize_run()` at pipeline end with correct `overall_status`
+- [ ] T018 [P] [US1] Update `orchestrator/utils/power_automate.py` `post_files()` to accept JSON log file paths alongside Markdown files in the `files[]` payload; call this from `orchestrator/main.py` after `finalize_run()` to include `jarvis/logs/{date}/{run_id}.json` in the webhook payload
+- [ ] T019 [US1] Write `tests/test_run_logger.py` covering: `test_start_run_creates_valid_json` (file created with correct schema), `test_log_agent_entry_appends` (agents array grows with each call), `test_finalize_run_sets_status` (overall_status and completed_at written), `test_log_agent_entry_handles_missing_file` (graceful degradation, no exception raised)
 
-**Phase 3 complete when**: Quickstart Sprint 1 validation passes — JSON log exists in SharePoint after a live run, all required schema fields are present, `run_id` matches across all agent entries.
+**Phase 3 complete when**: Quickstart Sprint 1 scenario passes — JSON log exists in SharePoint after a live run; schema valid; non-zero cost for LLM agents; existing Markdown outputs unchanged.
 
 ---
 
 ## Phase 4: US2 — Validation Agent + Quality Gates
 
-*Goal: Every subagent output is scored; scores drive retry/skip/escalate decisions logged in the run JSON and surfaced in the morning digest.*
+*Goal: Every `research` and `obsidian_writer` output is scored before being committed to TaskResult; retry/skip/escalate logic is live; validation scores appear in digest and run log.*
 
-**Independent test criteria**: Force a synthetic low-confidence output (score < 0.60); confirm the agent is skipped, `TaskResult.status = "partial"`, digest includes `[HUMAN REVIEW REQUIRED]`, and the run log records `escalation_flag: true`. Force a mid-range score (0.60–0.89); confirm one retry occurs before acceptance or skip.
+**Independent test criteria**: Set `JARVIS_VALIDATION_OVERRIDE_SCORE=0.45` and run `--dry-run`; confirm agent skipped, `TaskResult.status="partial"`, digest flags `[HUMAN REVIEW REQUIRED]`, log records `escalation_flag: true`. Set override to 0.82 and confirm one retry then acceptance. Simulate Validation Agent crash; confirm synthetic pass and pipeline completion.
 
-- [ ] T019 [US2] Create `prompts/validation.md` with system prompt instructing the Validation Agent to score agent outputs across four dimensions (relevance, completeness, compliance, format_adherence) and return a structured JSON ValidationResult; include PII-detection instruction for `compliance` dimension
-- [ ] T020 [US2] Create `orchestrator/agents/validation.py` with `score_output(agent_name, output_dict, task_context, run_id)` function stub that calls the Anthropic API using `claude-haiku-4-5` with the prompt from `prompts/validation.md`
-- [ ] T021 [US2] Implement composite score calculation in `orchestrator/agents/validation.py`: `confidence_score = (relevance × 0.35) + (completeness × 0.30) + (compliance × 0.25) + (format_adherence × 0.10)`; set `pass`, `retry_recommended`, `escalate` booleans per threshold logic in `contracts/validation-result-schema.md`
-- [ ] T022 [US2] Implement crash handling in `orchestrator/agents/validation.py`: wrap the API call in try/except; on any exception, return a synthetic `ValidationResult` with `confidence_score: 0.90`, `pass: true`, `notes: "SYNTHETIC: Validation Agent error"`, and log the exception as a separate `AgentLogEntry` with `status: "failed"` for the validation agent itself
-- [ ] T023 [US2] Integrate Validation Agent into `orchestrator/main.py`: after each subagent (research, gcp_discovery, obsidian_writer) call `validation.score_output()`; store `ValidationResult` to drive recovery decision
-- [ ] T024 [US2] Implement three-tier recovery logic in `orchestrator/main.py`: if `confidence_score ≥ 0.90` accept; if `0.60 ≤ confidence_score < 0.90` retry agent once then re-score; if score still `< 0.60` or initial score `< 0.60` skip agent and set `escalation_flag=True`
-- [ ] T025 [US2] Update `orchestrator/main.py` to set `TaskResult.status = "partial"` when any agent is skipped due to validation failure; add skipped agent name and reason to the `clarifications_needed` list with `[HUMAN REVIEW REQUIRED]` prefix
-- [ ] T026 [US2] Update `run_logger.log_agent_entry()` call in `orchestrator/main.py` to include `confidence_score`, `validation_pass`, `retry_count`, `escalation_flag`, `human_review_required`, `skip_reason` from the `ValidationResult` and recovery decision
-- [ ] T027 [US2] Update `orchestrator/agents/obsidian_writer.py` to include a validation scores table in the task record Markdown: one row per agent with agent name, confidence score, pass/fail, retry count
+- [ ] T020 [US2] Create `prompts/validation.md` with system prompt instructing the Validation Agent to score provided agent output across four dimensions (relevance, completeness, actionability, format_adherence), each 0.0–1.0, and return a structured JSON `ValidationResult` matching `contracts/validation-result-schema.md`; include instruction that `notes` field must not exceed 300 characters
+- [ ] T021 [US2] Create `orchestrator/agents/validation.py` with `score_output(agent_name, output_dict, task_context, run_id) -> ValidationResult` stub: check `JARVIS_VALIDATION_OVERRIDE_SCORE` env var first and return synthetic result at that score if set; otherwise call `client.messages.create(model="claude-haiku-4-5", ...)` with `prompts/validation.md` system prompt
+- [ ] T022 [US2] Implement composite score formula in `orchestrator/agents/validation.py`: `confidence_score = (relevance × 0.35) + (completeness × 0.30) + (actionability × 0.25) + (format_adherence × 0.10)`; set `pass`, `retry_recommended`, `escalate` booleans per threshold logic in `contracts/validation-result-schema.md`
+- [ ] T023 [US2] Implement crash handling in `orchestrator/agents/validation.py`: wrap entire API call in try/except; on any exception return synthetic `ValidationResult` with `confidence_score: 0.90`, all dimensions 0.90, `notes: "SYNTHETIC: Validation Agent error"`; log the exception details separately without re-raising
+- [ ] T024 [US2] Integrate Validation Agent into `orchestrator/main.py`: after `research` completes, call `validation.score_output("research", ...)`; after `obsidian_writer` completes, call `validation.score_output("obsidian_writer", ...)`; read all thresholds from `settings.yaml` `validation:` section
+- [ ] T025 [US2] Implement three-tier recovery logic in `orchestrator/main.py`: `score ≥ pass_threshold (0.90)` → accept; `retry_min_threshold (0.60) ≤ score < pass_threshold` → retry agent once, re-score, accept if retry score `≥ retry_accept_threshold (0.80)`, else skip; `score < skip_threshold (0.60)` → skip immediately; set `escalation_flag=True` on any skip
+- [ ] T026 [US2] Update `orchestrator/main.py` to set `TaskResult.status = "partial"` when any agent is skipped due to validation failure; add skipped agent name and reason to digest escalation list with `[HUMAN REVIEW REQUIRED]` prefix
+- [ ] T027 [US2] Update `run_logger.log_agent_entry()` call in `orchestrator/main.py` to include `confidence_score`, `validation_pass`, `retry_count`, `skip_reason`, `escalation_flag`, `human_review_required` from the `ValidationResult` and recovery decision
+- [ ] T028 [US2] Add `validation:` section to `config/settings.yaml` with: `pass_threshold: 0.90`, `retry_min_threshold: 0.60`, `retry_accept_threshold: 0.80`, `skip_threshold: 0.60`, `timeout_seconds: 30`
+- [ ] T029 [US2] Update `orchestrator/agents/obsidian_writer.py` to include a "Run Quality Summary" section in the morning digest: Markdown table with one row per agent showing agent name, confidence score (or "N/A" for non-validated agents), PASS/FAIL status, retry count, escalation flag
+- [ ] T030 [US2] Write `tests/test_validation.py` covering: `test_composite_score_formula` (verify weighted average), `test_threshold_tiers` (verify pass/retry/escalate boolean assignment for each tier), `test_synthetic_pass_on_crash` (exception → confidence_score 0.90), `test_override_score_env_var` (JARVIS_VALIDATION_OVERRIDE_SCORE respected), `test_validation_not_called_for_gcp_discovery` (scope constraint enforced in main.py)
 
-**Phase 4 complete when**: Quickstart Sprint 2 scenarios A, B, and C pass — including forced skip-degrade, retry window, and Validation Agent crash handling without pipeline halt.
-
----
-
-## Phase 5: US3 — CI Agent + Prompt Library
-
-*Goal: Bi-weekly CI analysis produces scored, evidence-backed recommendations in vault; operator can approve via inbox task; changes are applied, archived, and tracked in `prompts/library.json`.*
-
-**Independent test criteria**: Run CI Agent against 5 synthetic JSON log files (covering 3+ runs); confirm a Markdown report and JSON scores file appear in vault; confirm at least one recommendation with `tier: recommend` is present if synthetic logs contain degraded performance data. Approve a recommendation via inbox task; confirm the prompt file is updated and archived.
-
-- [ ] T028 [US3] Create `prompts/ci_agent.md` with system prompt instructing the CI Agent to analyze agent log data, compute weighted dimension scores, identify improvement opportunities, and output structured recommendations in the format defined in `contracts/ci-report-schema.md`
-- [ ] T029 [P] [US3] Create `orchestrator/agents/ci_agent.py` with function stubs: `analyze_logs(log_dir, since_date)`, `score_agents(entries)`, `generate_recommendations(scores, library)`, `write_report(ci_run, report_path, scores_path)`, `update_library_performance(library_path, agent_scores)`
-- [ ] T030 [US3] Implement `ci_agent.analyze_logs(log_dir, since_date)` in `orchestrator/agents/ci_agent.py`: iterate all `jarvis/logs/{date}/*.json` files within the analysis window; parse `AgentLogEntry` records; skip malformed files with a warning log; return flat list of entries
-- [ ] T031 [US3] Implement `ci_agent.score_agents(entries)` in `orchestrator/agents/ci_agent.py`: group entries by `agent_name`; compute 7-dimension composite score per agent using weights from `contracts/ci-report-schema.md`; include `low_sample_warning: true` if total run count < 5; apply adjusted 20% threshold when `low_sample_warning` is true
-- [ ] T032 [US3] Implement `ci_agent.generate_recommendations(scores, library)` in `orchestrator/agents/ci_agent.py`: call Anthropic API with `claude-sonnet-4-6`; pass agent scores and prompt library metadata; filter output to keep only recommendations with `ci_score_delta ≥ 0.15` (or 0.20 if low sample); assign sequential IDs (`R-001`, `R-002`, …); set `risk_level: HIGH` automatically for any recommendation touching PII guard or auto-send logic
-- [ ] T033 [US3] Implement `ci_agent.write_report(ci_run, report_path, scores_path)` in `orchestrator/agents/ci_agent.py`: write `jarvis/ci/ci_report_{date}.md` in the format defined in `contracts/ci-report-schema.md`; write `jarvis/ci/ci_scores_{date}.json`; include both files in the Power Automate webhook payload
-- [ ] T034 [US3] Implement `ci_agent.update_library_performance(library_path, agent_scores)` in `orchestrator/agents/ci_agent.py`: update `performance` fields (avg_confidence_score, validation_pass_rate, avg_latency_ms, avg_tokens_per_run, sample_size, last_evaluated) for each agent entry in `prompts/library.json` based on current cycle data
-- [ ] T035 [US3] Add CI Agent cron job to `.github/workflows/jarvis.yml`: new job `run-ci-agent` with schedule `cron: "0 23 * * 0,3"`; same checkout/python/install steps as `run-jarvis`; run `python orchestrator/main.py --mode ci`; add `--mode` flag handler to `orchestrator/main.py`
-- [ ] T036 [US3] Implement CI approval task handler in `orchestrator/main.py`: detect inbox task type `ci_approval` (title matches `apply CI recommendation R-{id}`); load latest `jarvis/ci/ci_scores_*.json` (most recent file); find recommendation by ID; dispatch to `apply_ci_recommendation(recommendation, library_path)`
-- [ ] T037 [US3] Implement `apply_ci_recommendation(recommendation, library_path)` function in `orchestrator/main.py`: for `type: prompt_improvement` — copy current prompt to `prompts/versions/{agent}_v{version}.md`, write new prompt content, bump version in `library.json`, reset `performance.sample_size` to 0; for `type: config_change` — update `config/settings.yaml` at the specified key; update recommendation `status: applied` in scores JSON; write task record confirming what was applied
-
-**Phase 5 complete when**: Quickstart Sprint 3 scenarios A, B, and C pass — CI report appears in vault, library.json has performance data, inbox approval applies a prompt change and archives the old version.
+**Phase 4 complete when**: Quickstart Sprint 2 scenarios A, B, and C all pass.
 
 ---
 
-## Phase 6: US4 — Vault Maintenance Agent
+## Phase 5: US3 — Bi-Weekly Stats Report
 
-*Goal: Weekly automated vault cleanup; low-risk issues auto-fixed and committed; high-risk proposals land in vault for operator review and inbox approval.*
+*Goal: Separate GitHub Actions job runs Sunday and Tuesday nights, reads JSON run logs, produces aggregated stats report in SharePoint.*
 
-**Independent test criteria**: Introduce a broken wikilink and a naming violation; trigger Vault Maintenance; confirm auto-fix commit appears with message `vault: maintenance auto-fix [jarvis-skip]` and both issues are fixed. Create two overlapping vault notes; confirm a `duplicate_note` proposal appears in the maintenance report without either note being modified.
+**Independent test criteria**: Run stats reporter against 3+ synthetic JSON log files; confirm `jarvis/ci/stats_{date}.md` and `jarvis/ci/stats_{date}.json` produced with correct per-agent rows; confirm second run uses first run's `analysis_window_end` as its window start; confirm malformed log file is skipped without crashing.
 
-- [ ] T038 [US4] Create `prompts/vault_maintenance.md` with system prompt instructing the Vault Maintenance Agent to classify vault issues by risk level, generate concise proposal descriptions, and output structured JSON matching the internal schema in `contracts/maintenance-report-schema.md`
-- [ ] T039 [P] [US4] Create `orchestrator/agents/vault_maintenance.py` with function stubs: `scan_vault(vault_root)`, `apply_auto_fixes(fixes)`, `generate_proposals(high_risk_issues)`, `write_report(run, report_path)`, `commit_auto_fixes(fixes)`
-- [ ] T040 [US4] Implement `vault_maintenance.scan_vault(vault_root)` in `orchestrator/agents/vault_maintenance.py`: walk all `.md` files under `vault_root`; detect broken wikilinks (regex `\[\[([^\]]+)\]\]` with path check), naming violations (uppercase or space in filename), missing frontmatter (`created`/`last_updated` absent), empty files (0 content lines), and duplicate notes (content similarity via word overlap ratio > 0.85); return categorized issue list
-- [ ] T041 [US4] Implement `vault_maintenance.apply_auto_fixes(fixes)` in `orchestrator/agents/vault_maintenance.py`: for each fix type — repair broken links (update link target to correct path), rename files (kebab-case), add missing frontmatter (derive timestamps from file metadata), delete empty files (verify 0 inbound links first); wrap all writes in a try/except that aborts ALL changes on any error and returns the fix list as proposals instead
-- [ ] T042 [US4] Implement `vault_maintenance.commit_auto_fixes(applied_fixes)` in `orchestrator/agents/vault_maintenance.py`: stage changed/renamed/deleted files via `subprocess` git commands; commit with message `vault: maintenance auto-fix [jarvis-skip]`; capture and return commit SHA
-- [ ] T043 [US4] Implement `vault_maintenance.generate_proposals(high_risk_issues)` in `orchestrator/agents/vault_maintenance.py`: call Anthropic API with `claude-haiku-4-5`; pass issue details; generate human-readable description and proposed action for each issue; assign sequential proposal IDs (`M-001`, `M-002`, …); set `approval_inbox_text` for each
-- [ ] T044 [US4] Implement `vault_maintenance.write_report(run, report_path)` in `orchestrator/agents/vault_maintenance.py`: write `jarvis/vault/maintenance_{date}.md` in format defined in `contracts/maintenance-report-schema.md`; include auto-fix summary table and all proposals with approval instructions; include report file in Power Automate webhook payload
-- [ ] T045 [US4] Add Vault Maintenance Agent cron job to `.github/workflows/jarvis.yml`: new job `run-vault-maintenance` with schedule `cron: "0 22 * * 6"`; run `python orchestrator/main.py --mode vault_maintenance`; add `vault_maintenance` to `--mode` handler in `orchestrator/main.py`
-- [ ] T046 [US4] Implement vault approval task handler in `orchestrator/main.py`: detect task type `vault_approval` (title matches `apply vault maintenance proposal M-{id}`); load most recent `jarvis/vault/maintenance_*.md` and its corresponding internal JSON; find proposal by ID; apply the specific action (merge notes, archive stale record, move to correct folder); write task record confirming action taken
+- [ ] T031 [US3] Create `orchestrator/agents/stats_reporter.py` with `run_stats_report(log_dir, stats_dir, webhook_url=None) -> None` stub and helper stubs: `_find_window_start(stats_dir) -> str | None` and `_aggregate_agent_stats(entries: list) -> list`
+- [ ] T032 [P] [US3] Implement `_find_window_start(stats_dir)` in `orchestrator/agents/stats_reporter.py`: glob `jarvis/ci/stats_*.json`, sort descending by filename date, open most recent, read `analysis_window_end` field; return `None` if no files found (first run)
+- [ ] T033 [P] [US3] Implement log scanning in `orchestrator/agents/stats_reporter.py`: iterate all `jarvis/logs/{date}/*.json` files; filter to entries where `run.started_at > window_start` (or all files if `window_start` is None); parse `agents` arrays into a flat list of `AgentLogEntry` dicts; skip malformed files with `warnings.warn()` — no exception raised
+- [ ] T034 [US3] Implement `_aggregate_agent_stats(entries)` in `orchestrator/agents/stats_reporter.py`: group by `agent_name`; compute per-agent: `run_count`, `success_rate` (status=success / total), `avg_confidence_score` (mean of non-null confidence_score; omit for non-validated agents), `avg_latency_ms`, `avg_tokens_per_run`, `total_cost_usd` (sum of estimated_cost_usd), `retry_count` (sum of retry_count), `escalation_count` (count of escalation_flag=true entries)
+- [ ] T035 [US3] Implement `run_stats_report()` in `orchestrator/agents/stats_reporter.py`: call `_find_window_start()`, scan logs, call `_aggregate_agent_stats()`, write `jarvis/ci/stats_{YYYY-MM-DD}.md` (Markdown table per `contracts/stats-report-schema.md`) and `jarvis/ci/stats_{YYYY-MM-DD}.json`; if `webhook_url` provided, call `power_automate.post_files()` with both output files
+- [ ] T036 [US3] Add `--mode stats_report` handler to `orchestrator/main.py` argument parser: when mode is `stats_report`, read `log_dir` and `stats_dir` from `settings.yaml`, call `stats_reporter.run_stats_report()`, and exit without running the task pipeline
+- [ ] T037 [US3] Add `run-stats-report` job to `.github/workflows/jarvis.yml` with schedule `cron: "0 23 * * 0,2"` (Sunday and Tuesday 11PM UTC); include: checkout, setup-python (Python 3.12), install dependencies, run unit tests, run stats report via `python orchestrator/main.py --mode stats_report`; add `concurrency: group: jarvis-stats, cancel-in-progress: false`
+- [ ] T038 [US3] Write `tests/test_stats_reporter.py` covering: `test_first_run_scans_all_logs` (None window_start → all files included), `test_window_start_from_prior_report` (analysis_window_end read correctly from prior JSON), `test_malformed_log_skipped` (bad JSON does not raise, emits warning), `test_aggregate_stats_accuracy` (known fixture data produces correct metric values), `test_confidence_score_absent_for_unvalidated_agents` (gcp_discovery and orchestrator have no avg_confidence_score field)
 
-**Phase 6 complete when**: Quickstart Sprint 4 scenarios A and B pass — auto-fix commit appears for injected broken link/naming violation; duplicate note proposal appears in report without either note being touched.
-
----
-
-## Phase 7: US5 — PR Review Agent
-
-*Goal: Operator submits an inbox task with a GitHub PR URL; a structured review lands in the vault within one run; no write operations occur on GitHub.*
-
-**Independent test criteria**: Submit inbox task with a real PR URL; confirm `jarvis/tasks/{task_id}.md` appears in vault with all review sections (summary, risk, concerns, questions, recommendation) and `[HUMAN REVIEW REQUIRED]` flag; confirm no PR comment was posted to GitHub; confirm JSON log shows no `POST`/`PATCH`/`DELETE` GitHub API calls.
-
-- [ ] T047 [US5] Create `prompts/pr_review.md` with system prompt instructing the PR Review Agent to analyze a pull request diff and produce a structured review with: change summary, risk assessment (HIGH/MED/LOW), specific concerns by category (security, logic, performance), suggested questions for the PR author, and an approval recommendation; include instruction to never produce GitHub comment text as output
-- [ ] T048 [P] [US5] Create `orchestrator/agents/pr_review.py` with function stubs: `fetch_pr(repo, pr_number, github_token)`, `analyze_pr(pr_data, vault_context, task_context)`
-- [ ] T049 [US5] Implement `pr_review.fetch_pr(repo, pr_number, github_token)` in `orchestrator/agents/pr_review.py`: make two read-only `requests.get` calls — `GET /repos/{repo}/pulls/{pr_number}` and `GET /repos/{repo}/pulls/{pr_number}/files`; raise `ValueError` if `GITHUB_TOKEN` is absent or if response is not 200; truncate diff to 2000 changed lines maximum and note truncation in returned data; verify no write HTTP methods are used
-- [ ] T050 [US5] Implement `pr_review.analyze_pr(pr_data, vault_context, task_context)` in `orchestrator/agents/pr_review.py`: call Anthropic API with `claude-sonnet-4-6`; pass PR metadata, diff (truncated if needed), and vault context from Research Agent; return structured `PRReview` dict matching `data-model.md` PRReview entity; always set `human_review_required: true`
-- [ ] T051 [US5] Update `orchestrator/utils/inbox_parser.py` to extract `pr_url` or `pr_number` and `repo` from the task request body when `agents: pr_review` is present; parse GitHub URL pattern `https://github.com/{owner}/{repo}/pull/{number}` to extract `repo` and `pr_number`
-- [ ] T052 [US5] Update `orchestrator/agents/orchestrator.py` routing logic to include `pr_review` in `agents_to_run` when inbox task type is `pr_review`; pass `pr_url`/`pr_number` and `repo` fields through to the PR Review Agent
-- [ ] T053 [US5] Add `GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}` environment variable to the `run-jarvis` job in `.github/workflows/jarvis.yml`; add a note in the workflow that this token must be scoped to `repo:read` only
-
-**Phase 7 complete when**: Quickstart Sprint 5 scenario passes — PR review appears in vault with all required sections, flagged `[HUMAN REVIEW REQUIRED]`, and no GitHub API write calls were made.
+**Phase 5 complete when**: Quickstart Sprint 3 scenarios B and C pass — stats report appears in SharePoint after manual trigger; subsequent run uses correct analysis window.
 
 ---
 
-## Phase 8: Polish & Cross-Cutting Concerns
+## Phase 6: Polish & Cross-Cutting
 
-- [ ] T054 Add `validation:` section to `config/settings.yaml` with configurable thresholds: `pass_threshold: 0.90`, `retry_min_threshold: 0.60`, `low_sample_ci_threshold: 5`, `stale_record_days: 90`
-- [ ] T055 [P] Update nightly digest in `orchestrator/agents/obsidian_writer.py` to include a "Run Quality Summary" section: table of agents with confidence scores, pass/fail status, and any escalations for the current run
-- [ ] T056 [P] Update `orchestrator/agents/obsidian_writer.py` to write `jarvis/ci/` and `jarvis/vault/` paths to the `files[]` webhook payload when those directories exist and have new content
-- [ ] T057 Add `pm_workflow_root: "PM"` and `jarvis_root: "Jarvis"` to `power_automate:` section in `config/settings.yaml`; update `orchestrator/utils/power_automate.py` to prefix all vault paths with `jarvis_root` value when constructing SharePoint paths
-- [ ] T058 [P] Register new Phase 2 agents in `prompts/library.json`: add entries for `validation`, `ci_agent`, `vault_maintenance`, `pr_review` with `status: "approved"`, empty performance metrics, and correct file paths
-- [ ] T059 Add timeout entries to `config/settings.yaml` for new agents: `validation_seconds: 30`, `ci_agent_seconds: 180`, `vault_maintenance_seconds: 120`, `pr_review_seconds: 120`
-- [ ] T060 Write unit tests in `tests/test_run_logger.py`: test `start_run` creates valid JSON, `log_agent_entry` appends correctly, `finalize_run` sets correct fields, malformed entry handled gracefully
-- [ ] T061 [P] Write unit tests in `tests/test_validation.py`: test composite score formula, three-tier threshold logic, synthetic pass on crash, compliance=0.0 on PII detection
+- [ ] T039 Keep `prompt_id` and `prompt_version` out of `AgentLogEntry` in `orchestrator/utils/run_logger.py` and `contracts/run-log-schema.md` — Prompt Library remains deferred, so those fields should stay absent from the live schema
+- [ ] T040 [P] Move outdated contract files to `specs/002-phase2-agent-ecosystem/contracts/archive/`: `prompt-library-schema.md`, `ci-report-schema.md`, `maintenance-report-schema.md`; update any references in `plan.md` or `tasks.md` to the archived location
+- [ ] T041 Remove the Power Automate smoke-test step from `.github/workflows/jarvis.yml` so production runs no longer write `jarvis/test.md`
 
-**Phase 8 complete when**: All config values are settable from `settings.yaml` without code changes, digest includes quality summary, new agents are registered in `library.json`, unit tests pass.
+**Phase 6 complete when**: No `prompt_id`/`prompt_version` in live log files; no obsolete contracts in the active contracts directory; no `jarvis/test.md` appearing in SharePoint on normal production runs.
 
 ---
 
 ## Dependencies Summary
 
 ```
-T001–T007  (Phase 1 Setup)
+T001–T005  (Phase 1: Setup)
     ↓
-T008–T011  (Phase 2 Foundational)
+T006–T013  (Phase 2: Phase 0 Stabilization)
     ↓
-T012–T018  (Phase 3: US1 Logging)
+T014–T019  (Phase 3: US1 Structured Logging)
     ↓
-T019–T027  (Phase 4: US2 Validation)
+T020–T030  (Phase 4: US2 Validation Agent)
     ↓
-T028–T037  (Phase 5: US3 CI Agent)    ─┐
-T038–T046  (Phase 6: US4 Vault Maint) ─┤ Can run in parallel
-T047–T053  (Phase 7: US5 PR Review)   ─┘
+T031–T038  (Phase 5: US3 Stats Report)
     ↓
-T054–T061  (Phase 8: Polish)
+T039–T041  (Phase 6: Polish)
 ```
 
 ### Parallel Opportunities Within Phases
 
-**Phase 1** (T001–T007): T001–T004 are fully parallel (different agent files). T006–T007 are parallel with T001–T005.
+**Phase 1** (T001–T005): T001–T004 are fully parallel (different agent files). T005 is independent.
 
-**Phase 3** (T012–T018): T012, T013, T014 are parallel (separate `run_logger` functions). T015 and T016 depend on T012–T014. T017 and T018 are parallel with T015–T016.
+**Phase 2** (T006–T013): T008 (CI tests), T010 (concurrency), T011 (PII mode), T012 (Node.js) are all parallel with each other and with T006/T007. T006 and T007 should be sequential (research first, validate, then obsidian_writer). T013 (Power Automate) is fully parallel with all Python changes.
 
-**Phase 4** (T019–T027): T019 (prompt) and T020 (stub) are parallel. T021 and T022 depend on T020. T023 depends on T019–T022. T024–T027 depend on T023.
+**Phase 3** (T014–T019): T014, T015, T016 are parallel (separate functions in the same file — implement stubs first). T017 depends on T014–T016. T018 is parallel with T017. T019 (tests) can be written in parallel with T014–T016.
 
-**Phase 5** (T028–T037): T028 (prompt) and T029 (stubs) are parallel. T030–T034 are partially parallel (different functions in same file). T035 depends on T030–T034. T036–T037 depend on T035.
+**Phase 4** (T020–T030): T020 (prompt) and T021 (stub) are parallel. T022 and T023 depend on T021. T024 depends on T020–T023. T025–T027 depend on T024. T028 is parallel with T024. T029 (digest update) depends on T025–T027. T030 (tests) can be written in parallel with T021–T028.
 
-**Phase 6** (T038–T046): T038 (prompt) and T039 (stubs) are parallel. T040–T044 are partially parallel. T045 depends on T038–T044. T046 depends on T045.
-
-**Phase 7** (T047–T053): T047 (prompt) and T048 (stubs) are parallel. T049–T050 depend on T048. T051–T052 are parallel with T049–T050. T053 is parallel with T047–T052.
+**Phase 5** (T031–T038): T031 (stubs) first. T032 and T033 are parallel (independent functions). T034 depends on T033. T035 depends on T032–T034. T036 depends on T035. T037 is parallel with T035–T036. T038 (tests) can be written in parallel with T032–T036.
 
 ---
 
 ## Implementation Strategy
 
-**MVP Scope (Sprint 1 = US1 only)**: Complete Phase 1 + Phase 2 + Phase 3. This gives full observability without changing any existing agent behavior. Every subsequent sprint adds value incrementally with no risk to what's already working.
+**MVP scope (Phase 2 + Phase 3 only)**: Complete T006 (LLM wiring for research) + T014–T018 (structured logging). This gives real token data in logs with no change to existing agent behavior. Every subsequent phase adds value incrementally.
 
 **Sprint boundaries**:
-- Sprint 1 end: JSON logs in SharePoint after every run
-- Sprint 2 end: Quality gates live; digest includes validation scores
-- Sprint 3 end: First CI report in vault; prompt library initialized
-- Sprint 4 end: Vault auto-fix commits running weekly
-- Sprint 5 end: PR reviews on demand via inbox
+- Phase 0 + Phase 1 + Phase 2 complete → system is stable, LLM-backed, with regression coverage
+- Phase 3 complete → JSON logs in SharePoint after every run
+- Phase 4 complete → quality gates live; digest shows validation scores
+- Phase 5 complete → trend data available bi-weekly
+- Phase 6 complete → no dead code, no noise in SharePoint
 
-**Zero-regression rule**: Phases 3–8 must not change the behavior of Phase 1 agents for valid inputs. Use `--dry-run` flag to test new code paths before enabling in production runs.
+**Zero-regression rule**: Phases 3–5 must not change the behavior of Phase 1 agents for valid inputs. Use `python orchestrator/main.py --dry-run` to test new code paths before enabling in production runs. The CI unit test step (T008) catches regressions automatically on every push.
 
 ---
 
 ## Total Task Count
 
-| Phase | Tasks | User Story |
-|-------|-------|------------|
-| Phase 1: Setup | 7 (T001–T007) | — |
-| Phase 2: Foundational | 4 (T008–T011) | — |
-| Phase 3: US1 Logging | 7 (T012–T018) | US1 |
-| Phase 4: US2 Validation | 9 (T019–T027) | US2 |
-| Phase 5: US3 CI Agent | 10 (T028–T037) | US3 |
-| Phase 6: US4 Vault Maint | 9 (T038–T046) | US4 |
-| Phase 7: US5 PR Review | 7 (T047–T053) | US5 |
-| Phase 8: Polish | 8 (T054–T061) | — |
-| **Total** | **61** | |
+| Phase | Tasks | Story |
+|-------|-------|-------|
+| Phase 1: Setup | 5 (T001–T005) | — |
+| Phase 2: Foundational (Phase 0) | 8 (T006–T013) | — |
+| Phase 3: US1 Logging | 6 (T014–T019) | US1 |
+| Phase 4: US2 Validation | 11 (T020–T030) | US2 |
+| Phase 5: US3 Stats Report | 8 (T031–T038) | US3 |
+| Phase 6: Polish | 3 (T039–T041) | — |
+| **Total** | **41** | |

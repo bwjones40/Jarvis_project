@@ -11,16 +11,17 @@ import requests
 
 
 def post_files(
-    files: list[dict[str, str]],
+    files: list[dict[str, str] | str | Path],
     run_metadata: dict[str, Any],
     webhook_url: str,
     *,
     error_log_path: str | Path = "jarvis/run-errors.log",
     timeout_seconds: int = 30,
 ) -> bool:
+    normalized_files = _normalize_files(files)
     payload = {
         "operation": "write_file",
-        "files": files,
+        "files": normalized_files,
         "run_metadata": run_metadata,
     }
     retryable_statuses = {429, 500, 502, 503, 504}
@@ -61,3 +62,20 @@ def _write_error_log(error_log_path: str | Path, payload: dict[str, Any], messag
         "payload": payload,
     }
     path.write_text(json.dumps(entry, indent=2), encoding="utf-8")
+
+
+def _normalize_files(files: list[dict[str, str] | str | Path]) -> list[dict[str, str]]:
+    normalized: list[dict[str, str]] = []
+    for item in files:
+        if isinstance(item, dict):
+            normalized.append(item)
+            continue
+
+        file_path = Path(item)
+        normalized.append(
+            {
+                "vault_path": file_path.as_posix(),
+                "content": file_path.read_text(encoding="utf-8"),
+            }
+        )
+    return normalized

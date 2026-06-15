@@ -194,6 +194,54 @@ Prevention Guidance: After changing PII mode, search full run output and vault f
 
 Confidence Level: High.
 
+### GitHub Actions Bot Commit Caused Rejected Pushes
+
+Error / Issue / Fragile Pattern: `git push origin main` repeatedly failed with `fetch first` or `non-fast-forward` after Jarvis validation runs.
+
+Evidence: Recent commit history includes repeated `jarvis: update run state after run [jarvis-skip]` commits; `.github/workflows/jarvis.yml` stages and pushes both `jarvis/inbox.md` and `jarvis/usage-history.json`.
+
+Context: The workflow writes back to the same branch after successful runs. Local inbox-task commits quickly fall behind `origin/main`.
+
+Likely Root Cause: The operator committed a new inbox task locally while the remote branch had already advanced with workflow-bot commits.
+
+Current Status: Confirmed recurring workflow pattern, not a one-off failure.
+
+Prevention Guidance: Before pushing a new inbox task or evidence commit, run `git fetch origin` followed by `git pull --rebase origin main`.
+
+Confidence Level: High.
+
+### `git rebase --continue` Failed Because `code --wait` Was Broken
+
+Error / Issue / Fragile Pattern: `git rebase --continue` failed because Git tried to launch `code --wait`, but the configured VS Code path no longer existed.
+
+Evidence: Validation transcript included `/c/Users/.../Code.exe: No such file or directory` and `Please supply the message using either -m or -F option.`
+
+Context: The rebase itself was recoverable, but the editor hook blocked completion.
+
+Likely Root Cause: Stale `core.editor` configuration pointing to a removed VS Code install path.
+
+Current Status: Workaround confirmed by setting `$env:GIT_EDITOR='true'` before running the rebase command.
+
+Prevention Guidance: Use `$env:GIT_EDITOR='true'` for repo-local recovery, then later fix `git config --global core.editor` to a valid editor path if desired.
+
+Confidence Level: High.
+
+### Detached `HEAD` and Stale `rebase-merge` State Increased Git Confusion
+
+Error / Issue / Fragile Pattern: A manual commit was created while rebase was still in progress, leading to detached `HEAD` state and later `rebase-merge` errors.
+
+Evidence: Validation transcript included `[detached HEAD ...]`, followed by `fatal: It seems that there is already a rebase-merge directory`.
+
+Context: Once the rebase state became mixed with manual commits, normal `git pull --rebase` commands could no longer proceed cleanly.
+
+Likely Root Cause: Committing manually instead of finishing or aborting the active rebase.
+
+Current Status: Recovery guidance established: abort the rebase and restart from a clean branch state.
+
+Prevention Guidance: During a rebase, do not run a separate `git commit`. Resolve the conflict, `git add` the file, and use `git rebase --continue`; if the rebase state is unclear, run `git rebase --abort` and restart.
+
+Confidence Level: High.
+
 ## 2. Inferred Issues
 
 ### Real LLM Execution Is Absent
@@ -259,6 +307,8 @@ Confidence Level: Medium.
 - [Confirmed] `obsidian_writer.py` mutates `task_result` while rendering outputs. Evidence: `orchestrator/agents/obsidian_writer.py`.
 - [Confirmed] Power Automate is unversioned but central to production output. Evidence: no flow export in repo.
 - [Confirmed] GitHub Actions commits back to the same branch after successful post. Evidence: `.github/workflows/jarvis.yml`.
+- [Confirmed] GitHub Actions now performs a real Anthropic smoke test before the Jarvis task run. Evidence: `.github/workflows/jarvis.yml`, `orchestrator/utils/anthropic_smoke.py`.
+- [Confirmed] Weekly digest rollups now depend on persisted `jarvis/usage-history.json` state written after successful runs. Evidence: `orchestrator/main.py`, `orchestrator/utils/usage_history.py`, `orchestrator/agents/obsidian_writer.py`.
 - [Confirmed] Unit tests do not run in GitHub Actions. Evidence: `.github/workflows/jarvis.yml`.
 - [Confirmed] Workflow smoke test writes `jarvis/test.md` whenever webhook secret exists. Evidence: `.github/workflows/jarvis.yml`.
 - [Inferred] Future Phase 2 specs may confuse agents because they are present but not implemented. Evidence: `specs/002-jarvis-phase2/`, `specs/003-phase2-agent-ecosystem/`.
@@ -274,19 +324,51 @@ Confidence Level: Medium.
 ## 5. Prevention Guidance
 
 1. Run `$env:PYTHONDONTWRITEBYTECODE='1'; python -m unittest discover -s tests` before claiming implementation complete.
+   Current confirmed baseline: `Ran 50 tests ... OK`.
 2. Add the unit-test command to GitHub Actions.
 3. Search run output and generated vault files for `REDACTED` after any `pii.mode` change.
 4. Treat local GCP validation as environment-dependent; capture `where bq`, auth context, command output, and Scenario 4 output.
 5. Export or document Power Automate flow changes immediately after they are validated.
 6. Keep evidence folders separate from runtime output and avoid committing generated vault files unless intentionally documenting proof.
 7. Before adding Anthropic calls, design the trust boundary and token capture as a single change.
-8. Before pushing a new inbox task, pull/rebase because GitHub Actions may have committed a cleared inbox.
+8. Before pushing a new inbox task, pull/rebase because GitHub Actions may have committed a cleared inbox and `jarvis/usage-history.json`.
+9. If `git rebase --continue` fails because of a broken editor, set `$env:GIT_EDITOR='true'` and rerun the command.
+10. If you see detached `HEAD` or `rebase-merge` errors, abort the rebase and restart instead of adding more commits in the middle of it.
 
 ## 6. Evidence Gaps
 
 - [Unverified] Current live Power Automate flow definition.
 - [Unverified] Fresh Scenario 4 output after the `pii.mode: off` sanitizer-path fix.
-- [Unverified] Phase 6 evidence folder completeness after current docs/code changes.
+- [Confirmed] Phase 6 evidence folder is current for weekly cost rollup, context pruning, and research `cache_hit` validation. Evidence: `specs/001-jarvis-mvp/Verifcation-evidence/phase-6-cost-controls/6.5 Weekly cost rollup with 3 task records - Proof.png`, `specs/001-jarvis-mvp/Verifcation-evidence/phase-6-cost-controls/6.6 Context pruning AgentRun output - Proof.png`, `specs/001-jarvis-mvp/Verifcation-evidence/phase-6-cost-controls/6.7 Research cache_hit AgentRun output - Proof.png`.
 - [Unverified] Whether GitHub Actions secrets are valid for real Anthropic calls.
 - [Unverified] Whether OneDrive sync timing meets morning-digest expectations.
 - [Unverified] Whether generated screenshots cover all acceptance criteria without relying on implicit context.
+
+## 7. Known Git Failure Recovery
+
+[Confirmed] Safe workflow when GitHub Actions has already committed cleared inbox state or `jarvis/usage-history.json`:
+
+```powershell
+git status --short --branch
+git fetch origin
+$env:GIT_EDITOR='true'
+git pull --rebase origin main
+```
+
+[Confirmed] If `jarvis/inbox.md` is conflicted, keep the task text you intended to push, then continue:
+
+```powershell
+git add jarvis/inbox.md
+git rebase --continue
+git push origin main
+```
+
+[Confirmed] If you are already stuck in an inconsistent rebase state:
+
+```powershell
+git rebase --abort
+git fetch origin
+$env:GIT_EDITOR='true'
+git pull --rebase origin main
+git push origin main
+```

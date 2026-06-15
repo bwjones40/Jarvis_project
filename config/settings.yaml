@@ -26,12 +26,23 @@ research:
   max_tokens_per_note: 2000
   cache_hit_threshold: 0.8
 
+logging:
+  log_dir: "jarvis/logs"
+  stats_dir: "jarvis/ci"
+
+validation:
+  pass_threshold: 0.90
+  retry_min_threshold: 0.60
+  retry_accept_threshold: 0.80
+  skip_threshold: 0.60
+  timeout_seconds: 30
+
 pii:
   # Modes:
   # - strict: redact names and emails; stop tasks that include either.
   # - standard: redact emails; allow technical metadata names such as dataset/table labels.
   # - off: no PII detection or redaction; use only for explicitly approved local runs.
-  mode: off
+  mode: standard
 
 gcp:
   # Operator must set this to a readable BigQuery project before daytime discovery.

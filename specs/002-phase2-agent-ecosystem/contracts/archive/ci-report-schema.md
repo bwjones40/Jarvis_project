@@ -1,3 +1,5 @@
+> **DEFERRED TO PHASE 3** — CI recommendation engine requires weeks of real Validation Agent data; deferred from Phase 2 scope. Do not implement until Phase 3 planning begins.
+
 # Contract: CI Agent Report Schema
 
 **Feature**: 003-phase2-agent-ecosystem

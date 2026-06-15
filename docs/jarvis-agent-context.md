@@ -4,7 +4,7 @@
 
 [Confirmed] Jarvis is a Python/GitHub Actions MVP for operator-assigned task processing. The main input is `jarvis/inbox.md`; the main output is markdown payloads posted to Power Automate for SharePoint/Obsidian delivery. Evidence: `orchestrator/main.py`, `.github/workflows/jarvis.yml`.
 
-[Confirmed] Current "agents" are deterministic Python functions that append AgentRun records. They do not currently call Claude, despite model labels, prompt files, and the Anthropic dependency. Evidence: `orchestrator/agents/*.py`, `requirements.txt`, `prompts/*.md`.
+[Confirmed] Current task "agents" are deterministic Python functions that append AgentRun records. They do not use Claude for task execution, but the GitHub Actions workflow now performs a real Anthropic smoke test before the Jarvis run. Evidence: `orchestrator/agents/*.py`, `requirements.txt`, `prompts/*.md`, `.github/workflows/jarvis.yml`, `orchestrator/utils/anthropic_smoke.py`.
 
 [Confirmed] Phase 4-6 implementation is present: Obsidian task/digest/lesson outputs, Power Automate retry/error handling, daytime GCP discovery, token/cost tables, weekly rollups, context cap/cache-hit flags, and configurable PII modes. Evidence: `orchestrator/agents/obsidian_writer.py`, `orchestrator/agents/gcp_discovery.py`, `orchestrator/utils/pii_guard.py`, `tests/*.py`.
 
@@ -19,8 +19,9 @@
 | Draft safety | Drafts are markdown-only and flagged | High | `tests/test_obsidian_writer.py` |
 | PII modes | `strict`, `standard`, `off` implemented | High | `orchestrator/utils/pii_guard.py`, `tests/test_pii_guard.py` |
 | GCP discovery | Implemented for local daytime `bq` metadata discovery | High | `orchestrator/agents/gcp_discovery.py` |
-| Weekly cost rollup | Implemented, but token counts are zero until real LLM calls | High | `orchestrator/agents/obsidian_writer.py` |
-| Real Anthropic calls | Not implemented | High | no source usage of Anthropic client |
+| Weekly cost rollup | Implemented with persisted `jarvis/usage-history.json`; token counts stay near zero for deterministic runs | High | `orchestrator/utils/usage_history.py`, `orchestrator/agents/obsidian_writer.py` |
+| Anthropic smoke test | Implemented in GitHub Actions only | High | `.github/workflows/jarvis.yml`, `orchestrator/utils/anthropic_smoke.py` |
+| Real Anthropic task execution | Not implemented | High | no source usage of Anthropic client in task agents |
 | Power Automate upsert | Required but not verifiable from repo | Medium | `contracts/webhook-payload.md` |
 | Phase 2 ecosystem agents | Planned only | High | `specs/003-phase2-agent-ecosystem/` |
 
@@ -42,6 +43,7 @@
 - [Unverified] Actual Anthropic API/model validity.
 - [Unverified] Whether SharePoint/OneDrive sync timing meets the morning workflow target.
 - [Unverified] Whether Phase 2 specs are active backlog or archived planning.
+- [Confirmed] Phase 6 evidence is current for weekly rollup, context pruning, and research `cache_hit`. Evidence: `specs/001-jarvis-mvp/Verifcation-evidence/phase-6-cost-controls/`.
 
 ## 4. Critical Files and Why They Matter
 
@@ -56,7 +58,8 @@
 - `orchestrator/agents/obsidian_writer.py`: vault markdown shape, draft staging, weekly rollup, lesson/knowledge payload generation.
 - `orchestrator/utils/pii_guard.py`: compliance-sensitive redaction/detection behavior.
 - `orchestrator/utils/power_automate.py`: webhook contract, retry policy, `jarvis/run-errors.log`.
-- `tests/`: current regression safety net. Local tests currently passed with 40 tests.
+- `orchestrator/utils/usage_history.py`: persisted usage-history state for weekly digest rollups.
+- `tests/`: current regression safety net. Local tests currently passed with 50 tests.
 - `specs/001-jarvis-mvp/`: intended MVP behavior and validation scenarios.
 - `docs/jarvis-mvp-verification-guide.md`: operator validation guide.
 
@@ -87,6 +90,7 @@
 - Add unique task IDs.
 - Add workflow concurrency.
 - Gate the Power Automate smoke test behind manual dispatch or a separate validation flag.
+- Add a short operator runbook for git recovery when workflow-bot commits race local inbox changes.
 - Centralize inbox template text between `main.py` and parser tests.
 - Add a production-safety check around `pii.mode: off`.
 
@@ -103,7 +107,38 @@
 9. Clarify and prioritize `specs/002-*` and `specs/003-*`.
 10. Add operator troubleshooting docs for git conflicts, bq auth, and Power Automate failures.
 
-## 9. What a New Agent Should Read First
+## 9. Known Git Failure Recovery
+
+[Confirmed] The recurring git problem in this repo is not authentication. It is branch drift caused by workflow-bot commits that clear `jarvis/inbox.md` and may also update `jarvis/usage-history.json`.
+
+Use this sequence:
+
+```powershell
+git status --short --branch
+git fetch origin
+$env:GIT_EDITOR='true'
+git pull --rebase origin main
+```
+
+If `jarvis/inbox.md` conflicts, keep your intended task text, then:
+
+```powershell
+git add jarvis/inbox.md
+git rebase --continue
+git push origin main
+```
+
+If you accidentally committed during a rebase or see `rebase-merge` errors:
+
+```powershell
+git rebase --abort
+git fetch origin
+$env:GIT_EDITOR='true'
+git pull --rebase origin main
+git push origin main
+```
+
+## 10. What a New Agent Should Read First
 
 1. `AGENTS.md`
 2. `docs/jarvis-build-documentation.md`

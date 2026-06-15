@@ -1,3 +1,5 @@
+> **DEFERRED TO PHASE 3** — Vault Maintenance (4A + 4B) requires a SharePoint read path not yet designed; deferred from Phase 2 scope. Do not implement until Phase 3 planning begins.
+
 # Contract: Vault Maintenance Report Schema
 
 **Feature**: 003-phase2-agent-ecosystem

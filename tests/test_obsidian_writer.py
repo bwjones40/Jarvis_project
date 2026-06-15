@@ -64,7 +64,7 @@ class ObsidianWriterTests(unittest.TestCase):
         self.assertIn("[HUMAN APPROVAL REQUIRED]", task_file["content"])
         self.assertIn("## Draft Communications", task_file["content"])
         self.assertIn("Teams Draft", task_file["content"])
-        self.assertIn("| obsidian | claude-haiku-4-5 |", task_file["content"])
+        self.assertIn("| obsidian | claude-sonnet-4-6 |", task_file["content"])
 
     def test_request_for_teams_message_creates_explicit_draft(self) -> None:
         task = {

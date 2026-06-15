@@ -1,12 +1,11 @@
-# Implementation Plan: Jarvis Phase 2 — Agent Ecosystem Expansion
+# Implementation Plan: Jarvis Phase 2 — Agent Ecosystem Foundation
 
-**Feature**: 003-phase2-agent-ecosystem
-**Created**: 2026-06-14
+**Feature**: 002-phase2-agent-ecosystem
+**Revised**: 2026-06-15
 **Spec**: [spec.md](spec.md)
 **Data Model**: [data-model.md](data-model.md)
 **Contracts**: [contracts/](contracts/)
 **Quickstart**: [quickstart.md](quickstart.md)
-**Architecture reference**: [specs/002-jarvis-phase2/plan.md](../002-jarvis-phase2/plan.md)
 
 ---
 
@@ -16,12 +15,12 @@
 |------|-------|
 | Language | Python 3.12 |
 | Runtime | GitHub Actions (ubuntu-latest, ephemeral) |
-| Approved dependencies | `anthropic`, `google-cloud-bigquery`, `requests`, `pyyaml` (all existing) |
-| New dependency | None — GitHub API calls use `requests` (already approved) |
-| New secret | `GITHUB_TOKEN` (read-only, `repo:read` scope) — Sprint 5 only |
-| New cron schedules | CI Agent: `0 23 * * 0,3` (Sun/Wed 11PM); Vault Maintenance: `0 22 * * 6` (Sat 10PM) |
-| Existing models | Orchestrator: `claude-sonnet-4-6`; Subagents: `claude-haiku-4-5` |
-| New agent models | Validation: `claude-haiku-4-5`; CI Agent: `claude-sonnet-4-6`; Vault Maintenance: `claude-haiku-4-5`; PR Review: `claude-sonnet-4-6` |
+| Approved dependencies | `anthropic`, `google-cloud-bigquery`, `requests`, `pyyaml` (all existing — no new packages) |
+| New files | `orchestrator/utils/run_logger.py`, `orchestrator/agents/validation.py`, `orchestrator/agents/stats_reporter.py`, `prompts/validation.md` |
+| Modified files | `orchestrator/main.py`, `orchestrator/agents/research.py`, `orchestrator/agents/obsidian_writer.py`, `orchestrator/agents/orchestrator.py`, `orchestrator/utils/power_automate.py`, `orchestrator/utils/token_logger.py`, `config/settings.yaml`, `.github/workflows/jarvis.yml` |
+| New secrets | None |
+| New cron schedules | Stats report: `0 23 * * 0,2` (Sunday and Tuesday 11PM UTC) |
+| Models | orchestrator: `claude-sonnet-4-6`; research: `claude-haiku-4-5`; obsidian_writer: `claude-sonnet-4-6`; validation: `claude-haiku-4-5`; stats_reporter: no model |
 
 ---
 
@@ -29,199 +28,340 @@
 
 | Gate | Status | Notes |
 |------|--------|-------|
-| No PII | PASS | All new agents inherit PII guard; `input_summary`/`output_summary` in logs must not contain PII |
-| No auto-send | PASS | PR Review Agent never calls GitHub write APIs; all output is vault-only |
-| No auto-deploy CI changes | PASS | CI Agent is recommendation-only; inbox approval required for every change |
-| Read-only GCP | PASS | No new GCP operations in Phase 2 |
-| Approved services only | PASS | No new packages; GitHub API via `requests` (already approved) |
-| Human approval for high-risk vault changes | PASS | Vault Maintenance proposals require inbox approval; auto-fix limited to reversible low-risk operations |
+| No PII to external systems | PASS | `pii.mode: standard` enforced at Anthropic API boundary; SharePoint-bound data has no PII requirement |
+| No auto-send | PASS | All outputs vault-only; no new send paths |
+| No auto-deploy | PASS | No automated changes to config or prompts; all outputs are read-only vault writes |
+| Read-only GCP | PASS | No new GCP operations |
+| Approved services only | PASS | No new packages; all work uses existing approved dependencies |
+| Human approval for escalated outputs | PASS | Skipped agents produce `[HUMAN REVIEW REQUIRED]` in digest; no auto-remediation |
 
 ---
 
-## Phase 0: Research
+## Phase 0: Stabilization
 
-All decisions resolved. See [research.md](research.md) for full decision log.
+**Must complete before any sprint work begins. No sprint task may be merged until all Phase 0 items pass validation.**
 
-**Key resolved decisions**:
-- Log storage: JSON flat files in vault, existing Power Automate webhook
-- Recovery mode: skip and continue degraded
-- CI trigger: bi-weekly Sunday + Wednesday 11PM
-- Confidence thresholds: ≥0.90 / 0.60–0.89 (retry) / <0.60 (skip)
-- Build sequence: Logging → Validation → CI → Vault Maint → PR Review
+### P0-1: Wire real Anthropic calls — `research.py`
 
----
+**Modified**: `orchestrator/agents/research.py`
 
-## Phase 1: Sprint Plans
+- Import `anthropic` and `pathlib`
+- Load `prompts/research.md` at module level using `pathlib.Path`
+- Construct `anthropic.Anthropic()` client
+- Replace current deterministic output with `client.messages.create(model="claude-haiku-4-5", ...)`
+- Wrap in try/except; retry once on `anthropic.APIError` with 10-second sleep before re-raising
+- Pass real token counts (`response.usage.input_tokens`, `response.usage.output_tokens`) to `token_logger.log_agent_run()`
 
-### Sprint 1 — Structured Logging Foundation (Weeks 1–2)
-
-**Deliverable**: Every agent run emits a structured JSON log file synced to SharePoint.
-
-**New files**:
-- `orchestrator/utils/run_logger.py`
-
-**Modified files**:
-- `orchestrator/main.py` — generate `run_id`/`trace_id`, call `run_logger` after each agent
-- `orchestrator/utils/token_logger.py` — integrate with run_logger (share token data)
-- `orchestrator/utils/power_automate.py` — include JSON log files in webhook payload
-- `orchestrator/agents/*.py` — add `agent_version = "1.0.0"` constant to each agent file
-- `config/settings.yaml` — add `logging:` section with `log_dir: "jarvis/logs"`
-
-**`run_logger.py` responsibilities**:
-- `start_run(workflow_id, trigger_source, task_id=None) -> RunContext` — generates UUID4 `run_id` + `trace_id`, creates JSON file
-- `log_agent_entry(run_context, agent_entry: dict)` — appends one `AgentLogEntry` to the JSON file
-- `finalize_run(run_context, overall_status)` — writes `completed_at` and `overall_status` to the `run` object
-
-**Validation**: See [quickstart.md Sprint 1 scenarios](quickstart.md#sprint-1-structured-logging)
+**Validation**: Run `python orchestrator/main.py --dry-run` with a valid task. Confirm `token_usage.input > 0` in terminal output.
 
 ---
 
-### Sprint 2 — Validation Agent (Weeks 3–4)
+### P0-2: Wire real Anthropic calls — `obsidian_writer.py`
 
-**Deliverable**: Every subagent output is scored before being committed to TaskResult. Retry and skip-degrade logic is live.
+**Modified**: `orchestrator/agents/obsidian_writer.py`
 
-**New files**:
-- `orchestrator/agents/validation.py`
-- `prompts/validation.md`
+- Same pattern as P0-1 but uses `claude-sonnet-4-6` and `prompts/obsidian_writer.md`
+- Digest and task record content now generated by the model, not by template
+- Token counts passed to `token_logger`
 
-**Modified files**:
-- `orchestrator/main.py` — call Validation Agent after each subagent; implement three-tier decision logic; update TaskResult.status to `partial` on skip
-- `orchestrator/utils/run_logger.py` — add `confidence_score`, `validation_pass`, `retry_count` fields to `log_agent_entry`
+**Validation**: Run full pipeline locally. Confirm digest content is LLM-generated (not template). Confirm token count > 0.
 
-**`validation.py` responsibilities**:
-- `score_output(agent_name, output_dict, task_context, run_id) -> ValidationResult`
-- Composite score formula: `(relevance × 0.35) + (completeness × 0.30) + (compliance × 0.25) + (format_adherence × 0.10)`
-- Crash handling: return synthetic pass (0.90) and log Validation Agent failure separately
-- See [contracts/validation-result-schema.md](contracts/validation-result-schema.md) for full schema
+---
 
-**Retry logic in `main.py`**:
+### P0-3: Add unit tests to CI
+
+**Modified**: `.github/workflows/jarvis.yml`
+
+Add step before `Run Jarvis`:
+
+```yaml
+- name: Run unit tests
+  run: python -m unittest discover -s tests -v
 ```
-score = validation.score_output(agent_name, output, task, run_id)
-if score.confidence_score >= 0.90:
-    accept(output)
-elif score.confidence_score >= 0.60:
-    retry_output = run_agent_again(agent)
-    retry_score = validation.score_output(...)
-    if retry_score.confidence_score >= 0.60:
-        accept(retry_output, partial=True)
-    else:
-        skip_agent(agent, escalation_flag=True)
+
+All 50+ existing tests must pass before the main job proceeds. Any test failure blocks the run.
+
+**Validation**: Push a change that breaks a known test. Confirm the Actions job fails at the test step.
+
+---
+
+### P0-4: Fix task ID collision
+
+**Modified**: `orchestrator/agents/orchestrator.py`
+
+Update `_build_task_id()`:
+```python
+import os
+run_id = os.environ.get("GITHUB_RUN_ID")
+if run_id:
+    prefix = run_id
 else:
-    skip_agent(agent, escalation_flag=True)
+    from datetime import datetime, timezone
+    prefix = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+slug = task_title[:40].lower().replace(" ", "-")
+return f"task-{prefix}-{slug}"
 ```
 
-**Validation**: See [quickstart.md Sprint 2 scenarios](quickstart.md#sprint-2-validation-agent)
+**Validation**: Trigger two manual dispatches in sequence. Confirm both produce distinct task IDs in the vault.
 
 ---
 
-### Sprint 3 — CI Agent + Prompt Library (Weeks 5–7)
+### P0-5: Workflow concurrency control
 
-**Deliverable**: Bi-weekly CI analysis produces scored recommendations. Prompt library is initialized. Inbox approval flow applies changes.
+**Modified**: `.github/workflows/jarvis.yml`
 
-**New files**:
-- `orchestrator/agents/ci_agent.py`
-- `prompts/ci_agent.md`
-- `prompts/library.json` (initialized with 4 existing prompt entries)
-- `prompts/versions/orchestrator_v1.0.md` (archived copy)
-- `prompts/versions/research_v1.0.md` (archived copy)
-- `prompts/versions/gcp_discovery_v1.0.md` (archived copy)
-- `prompts/versions/obsidian_writer_v1.0.md` (archived copy)
+Add at job level (inside `run-jarvis:`):
+```yaml
+concurrency:
+  group: jarvis-run
+  cancel-in-progress: false
+```
 
-**Modified files**:
-- `.github/workflows/jarvis.yml` — add CI Agent cron job (`0 23 * * 0,3`)
-- `orchestrator/main.py` — add CI approval task handler (detect `apply CI recommendation R-{id}`)
-- `orchestrator/utils/inbox_parser.py` — recognize `agents: ci_approval` task type
-
-**`ci_agent.py` responsibilities**:
-- `analyze_logs(log_dir, since_date) -> list[AgentLogEntry]` — reads all JSON logs in window
-- `score_agents(entries) -> list[AgentScore]` — computes 7-dimension composite scores
-- `generate_recommendations(scores, library) -> list[CIRecommendation]` — filters by threshold
-- `write_report(ci_run, report_path, scores_path)` — writes Markdown report + JSON scores
-- `update_library_performance(library_path, agent_scores)` — updates `performance` fields in library.json
-
-**CI approval handler in `main.py`**:
-- Detect task title matching `apply CI recommendation R-{id}`
-- Load latest CI scores JSON
-- Find recommendation by ID
-- Apply the change (prompt swap OR config value update)
-- Archive old value to `prompts/versions/`
-- Update `library.json`
-- Write task record confirming what was applied
-
-**See schemas**: [contracts/ci-report-schema.md](contracts/ci-report-schema.md), [contracts/prompt-library-schema.md](contracts/prompt-library-schema.md)
-
-**Validation**: See [quickstart.md Sprint 3 scenarios](quickstart.md#sprint-3-ci-agent-and-prompt-library)
+**Validation**: Trigger two manual dispatches simultaneously. Confirm second run waits in queue rather than cancelling.
 
 ---
 
-### Sprint 4 — Vault Maintenance Agent (Weeks 8–9)
+### P0-6: Change `pii.mode` default to `standard`
 
-**Deliverable**: Weekly vault cleanup with auto-fix for low-risk issues and proposal reports for high-risk ones.
+**Modified**: `config/settings.yaml`
 
-**New files**:
-- `orchestrator/agents/vault_maintenance.py`
-- `prompts/vault_maintenance.md`
+Change:
+```yaml
+pii:
+  mode: off
+```
+To:
+```yaml
+pii:
+  mode: standard
+```
 
-**Modified files**:
-- `.github/workflows/jarvis.yml` — add Vault Maintenance cron job (`0 22 * * 6`)
-- `orchestrator/utils/inbox_parser.py` — recognize `agents: vault_approval` task type
-- `orchestrator/main.py` — add vault approval handler (detect `apply vault maintenance proposal M-{id}`)
-
-**`vault_maintenance.py` responsibilities**:
-- `scan_vault(vault_root) -> VaultScanResult` — finds all issues across all categories
-- `apply_auto_fixes(fixes) -> list[MaintenanceAutoFix]` — applies low-risk changes, aborts all on error
-- `generate_proposals(high_risk_issues) -> list[MaintenanceProposal]` — proposals for human approval
-- `write_report(run, report_path)` — writes Markdown proposal report
-- Commit auto-fixes with message: `vault: maintenance auto-fix [jarvis-skip]`
-
-**Auto-fix categories** (no approval needed):
-- `broken_link` — repair wikilinks to known vault paths
-- `naming_violation` — rename to kebab-case if file path contains uppercase or spaces
-- `missing_frontmatter` — add `created` and `last_updated` fields derived from file timestamps
-- `empty_file` — delete files with 0 content lines (after confirming no inbound links)
-
-**Proposal categories** (approval required):
-- `duplicate_note` — cosine similarity > 0.85 between two notes' content
-- `stale_record` — task records older than 90 days with 0 inbound links
-- `wrong_folder` — content classification suggests a different folder
-- `merge_candidate` — two notes that are subsets of each other
-
-**See schema**: [contracts/maintenance-report-schema.md](contracts/maintenance-report-schema.md)
-
-**Validation**: See [quickstart.md Sprint 4 scenarios](quickstart.md#sprint-4-vault-maintenance-agent)
+Run all tests after this change. Confirm no test regressions from the mode change.
 
 ---
 
-### Sprint 5 — PR Review Agent (Weeks 10–11)
+### P0-7: Update Node.js 24 action versions
 
-**Deliverable**: On-demand PR analysis triggered via inbox task; review written to vault only.
+**Modified**: `.github/workflows/jarvis.yml`
+
+- Update `actions/checkout@v4` to the latest patch version that natively targets Node.js 24
+- Update `actions/setup-python@v5` to the latest patch version that natively targets Node.js 24
+- Remove `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` env var from the `run-jarvis` job
+
+**Validation**: Push and confirm the Node.js 20 deprecation warning no longer appears in the Actions log.
+
+---
+
+### P0-8: Update Power Automate upsert logic
+
+**External**: `Jarvis_Create_File_Flow` in Power Automate
+
+Update the flow to check whether the target SharePoint file path already exists:
+- If file exists: use an update/overwrite action to replace content entirely
+- If file does not exist: use create action (current behavior)
+
+**Validation**: Run Jarvis twice with the same task. Confirm only one file exists in SharePoint (not two versioned copies). Confirm content is from the second run.
+
+---
+
+**Phase 0 complete when**: All P0-1 through P0-8 are done, unit tests pass in CI, Node.js warning gone, task IDs are unique across runs, and Power Automate upserts correctly.
+
+---
+
+## Sprint 1: Structured Logging (Weeks 1–2)
+
+**Deliverable**: Every agent run produces a schema-valid JSON log file at `jarvis/logs/{date}/{run_id}.json` synced to SharePoint.
+
+### New files
+
+**`orchestrator/utils/run_logger.py`** — Three public functions:
+
+```python
+def start_run(workflow_id: str, trigger_source: str, task_id: str = None) -> RunContext:
+    # Generates UUID4 run_id + trace_id
+    # Creates jarvis/logs/{YYYY-MM-DD}/{run_id}.json with run object
+    # Returns RunContext dataclass with run_id, trace_id, log_path
+
+def log_agent_entry(run_context: RunContext, entry: dict) -> None:
+    # Appends one AgentLogEntry dict to the agents[] array in the JSON file
+    # Handles file-not-found gracefully (logs warning, does not raise)
+
+def finalize_run(run_context: RunContext, overall_status: str) -> None:
+    # Writes completed_at and overall_status to the run object
+```
+
+### Modified files
+
+**`orchestrator/main.py`**:
+- Generate `run_id` and `trace_id` at top of execution block using `run_logger.start_run()`
+- Detect `trigger_source` from env: `GITHUB_ACTIONS=true` + `GITHUB_EVENT_NAME` value
+- Call `run_logger.log_agent_entry()` after each agent completes with timing, token, status data
+- Call `run_logger.finalize_run()` at pipeline end
+
+**`orchestrator/agents/*.py`** (all 4 existing agents):
+- Add `agent_version = "1.0.0"` constant at module level
+
+**`orchestrator/utils/power_automate.py`**:
+- Update `post_files()` to accept JSON log files alongside Markdown files in `files[]` payload
+
+**`config/settings.yaml`**:
+- Add `logging:` section: `log_dir: "jarvis/logs"`, `stats_dir: "jarvis/ci"`
+
+### Sprint 1 test additions
+
+**`tests/test_run_logger.py`** (new):
+- `test_start_run_creates_valid_json` — confirm file created with correct schema
+- `test_log_agent_entry_appends` — confirm agents array grows
+- `test_finalize_run_sets_status` — confirm overall_status written
+- `test_log_agent_entry_handles_missing_file` — confirm graceful degradation
+
+**Sprint 1 complete when**: Quickstart Sprint 1 scenario passes — JSON log exists in SharePoint after a live run with correct schema and non-zero token counts.
+
+---
+
+## Sprint 2: Validation Agent (Weeks 3–5)
+
+**Deliverable**: Every `research` and `obsidian_writer` output is scored; retry/skip/escalate logic drives pipeline decisions; results visible in digest and log.
+
+### New files
+
+**`prompts/validation.md`** — System prompt instructing the Validation Agent to:
+- Score the provided agent output across four dimensions: relevance, completeness, actionability, format_adherence
+- Return a structured JSON `ValidationResult` matching the schema in `contracts/validation-result-schema.md`
+- Never include PII in the `notes` field
+
+**`orchestrator/agents/validation.py`** — Two public functions:
+
+```python
+def score_output(agent_name: str, output_dict: dict, task_context: dict, run_id: str) -> ValidationResult:
+    # Calls claude-haiku-4-5 with prompts/validation.md system prompt
+    # Checks JARVIS_VALIDATION_OVERRIDE_SCORE env var first; returns synthetic result if set
+    # Computes confidence_score = (relevance×0.35) + (completeness×0.30) + (actionability×0.25) + (format×0.10)
+    # Sets pass/retry_recommended/escalate booleans per threshold logic
+    # Wraps in try/except; on any exception returns synthetic pass (confidence_score: 0.90)
+    # Logs Validation Agent crash as separate AgentLogEntry with status="failed"
+
+def _synthetic_pass(agent_name: str, run_id: str, notes: str = "SYNTHETIC") -> ValidationResult:
+    # Returns a ValidationResult with confidence_score=0.90 and all dimensions=0.90
+```
+
+### Modified files
+
+**`orchestrator/main.py`**:
+- After each of `research` and `obsidian_writer`: call `validation.score_output()`
+- Implement three-tier decision logic using configurable thresholds from `settings.yaml`:
+  - score ≥ `pass_threshold` (0.90): accept
+  - `retry_min_threshold` (0.60) ≤ score < `pass_threshold`: retry agent once; re-score; if retry ≥ `retry_accept_threshold` (0.80): accept; else: skip + escalate
+  - score < `skip_threshold` (0.60): skip immediately + escalate
+- On skip: set `TaskResult.status = "partial"`, add `[HUMAN REVIEW REQUIRED]` entry
+- Pass `confidence_score`, `validation_pass`, `retry_count`, `skip_reason`, `escalation_flag` to `run_logger.log_agent_entry()`
+
+**`orchestrator/agents/obsidian_writer.py`**:
+- Add "Run Quality Summary" section to morning digest: Markdown table with agent name, confidence score (or N/A), pass/fail, retry count, escalation flag
+
+**`config/settings.yaml`**:
+- Add `validation:` section with configurable thresholds:
+  ```yaml
+  validation:
+    pass_threshold: 0.90
+    retry_min_threshold: 0.60
+    retry_accept_threshold: 0.80
+    skip_threshold: 0.60
+    timeout_seconds: 30
+  ```
+
+### Sprint 2 test additions
+
+**`tests/test_validation.py`** (new):
+- `test_composite_score_formula` — verify weighted average calculation
+- `test_threshold_tiers` — verify pass/retry/escalate boolean assignment
+- `test_synthetic_pass_on_crash` — verify crash returns confidence_score=0.90
+- `test_override_score_env_var` — verify `JARVIS_VALIDATION_OVERRIDE_SCORE` works
+- `test_validation_agent_not_called_for_gcp_discovery` — verify scope constraint
+
+**Sprint 2 complete when**: Quickstart Sprint 2 scenarios A, B, and C all pass.
+
+---
+
+## Sprint 3: Monitoring (Weeks 6–8)
+
+**Deliverable**: Digest includes per-run quality table (3A); bi-weekly stats report job produces trend data (3B).
+
+### Sprint 3A — Digest Quality Summary
+
+This is delivered as part of Sprint 2's `obsidian_writer.py` change (the "Run Quality Summary" section). No additional work beyond what Sprint 2 specifies.
+
+### Sprint 3B — Bi-Weekly Stats Report
 
 **New files**:
-- `orchestrator/agents/pr_review.py`
-- `prompts/pr_review.md`
+
+**`orchestrator/agents/stats_reporter.py`** — Pure log aggregation, no LLM:
+
+```python
+def run_stats_report(log_dir: str, stats_dir: str, webhook_url: str = None) -> None:
+    # Determine analysis_window_start from most recent jarvis/ci/stats_*.json
+    # If none exists: window_start = None (scan all logs)
+    # Scan all jarvis/logs/{date}/*.json files within window
+    # Skip malformed files with warning
+    # Aggregate AgentStats per agent_name
+    # Write jarvis/ci/stats_{YYYY-MM-DD}.md and jarvis/ci/stats_{YYYY-MM-DD}.json
+    # Post both files via power_automate.post_files() if webhook_url provided
+
+def _find_window_start(stats_dir: str) -> str | None:
+    # Glob stats_*.json, sort descending, read analysis_window_end from most recent
+
+def _aggregate_agent_stats(entries: list[dict]) -> list[dict]:
+    # Group entries by agent_name
+    # Compute: run_count, success_rate, avg_confidence_score (validated only),
+    #          avg_latency_ms, avg_tokens_per_run, total_cost_usd, retry_count, escalation_count
+```
 
 **Modified files**:
-- `.github/workflows/jarvis.yml` — add `GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}` env var to `run-jarvis` job
-- `orchestrator/utils/inbox_parser.py` — recognize `agents: pr_review`; extract `pr_url` or `pr_number` + `repo` from request body
-- `orchestrator/agents/orchestrator.py` — route `pr_review` to PR Review Agent
 
-**`pr_review.py` responsibilities**:
-- `fetch_pr(repo, pr_number, github_token) -> PRData` — GET `https://api.github.com/repos/{repo}/pulls/{number}` and `/files`
-- `analyze_pr(pr_data, vault_context, task_context) -> PRReview` — produce structured review
-- Never call any GitHub API method other than GET
+**`orchestrator/main.py`**:
+- Add `--mode stats_report` handler in argument parser
+- When `--mode stats_report`: call `stats_reporter.run_stats_report()` and exit without running the task pipeline
 
-**GitHub API calls (read-only only)**:
-- `GET /repos/{owner}/{repo}/pulls/{pull_number}` — PR metadata
-- `GET /repos/{owner}/{repo}/pulls/{pull_number}/files` — changed files and diffs
+**`.github/workflows/jarvis.yml`**:
+- Add new job `run-stats-report` with schedule `cron: "0 23 * * 0,2"`:
+  ```yaml
+  run-stats-report:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: jarvis-stats
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - run: python -m pip install --upgrade pip && pip install -r requirements.txt
+      - run: python -m unittest discover -s tests -v
+      - name: Run stats report
+        env:
+          POWER_AUTOMATE_WEBHOOK_URL: ${{ secrets.POWER_AUTOMATE_WEBHOOK_URL }}
+        run: python orchestrator/main.py --mode stats_report
+  ```
 
-**Hard constraints**:
-- No `POST`, `PATCH`, `PUT`, `DELETE` calls to GitHub API ever
-- `GITHUB_TOKEN` env var must be checked at agent start; skip with `[HUMAN REVIEW REQUIRED: GITHUB_TOKEN not set]` if absent
-- PR diff size limit: if total changed lines > 2000, analyze only the first 2000 lines and note the truncation
+### Sprint 3 test additions
 
-**See data model**: [data-model.md — PRReview entity](data-model.md#prreview)
+**`tests/test_stats_reporter.py`** (new):
+- `test_first_run_scans_all_logs` — confirm null window_start scans all available files
+- `test_window_start_from_prior_report` — confirm analysis_window_end is read correctly
+- `test_malformed_log_skipped` — confirm bad JSON does not crash the reporter
+- `test_aggregate_stats_accuracy` — verify per-agent metric calculations
+- `test_confidence_score_only_for_validated_agents` — verify N/A for gcp_discovery/orchestrator
 
-**Validation**: See [quickstart.md Sprint 5 scenarios](quickstart.md#sprint-5-pr-review-agent)
+**Sprint 3 complete when**: Quickstart Sprint 3 scenario passes — stats report appears in SharePoint after manual trigger; digest includes Run Quality Summary table.
+
+---
+
+## Polish & Cross-Cutting
+
+- [ ] Keep `prompt_id` and `prompt_version` out of `AgentLogEntry` — Prompt Library is deferred, and those fields are intentionally absent from the live run-log writer and contract
+- [ ] Remove Power Automate smoke-test step from `jarvis.yml` so normal production runs no longer write `jarvis/test.md`
+- [ ] Archive outdated contract files under `specs/002-phase2-agent-ecosystem/contracts/archive/`: `prompt-library-schema.md`, `ci-report-schema.md`, `maintenance-report-schema.md`
 
 ---
 
@@ -229,19 +369,35 @@ else:
 
 | Risk | Severity | Mitigation |
 |------|----------|------------|
-| JSON log volume outpaces Power Automate payload limit | LOW | ~8KB per run file; PA supports up to 100MB payloads |
-| Validation Agent self-calibration converges wrong | MED | CI Agent monitors calibration drift; proposes threshold adjustment via recommendation |
-| CI Agent recommends a change that regresses performance | MED | Every applied change is a git commit; CI flags regression in next cycle; rollback via inbox task |
-| Vault Maintenance auto-fix corrupts a file | MED | Auto-fix aborts all writes on any error; git history provides full rollback |
-| PR Review Agent accidentally gains write GitHub scope | HIGH | `GITHUB_TOKEN` must be scoped to `repo:read` only; code review to confirm no write API calls |
-| Wednesday CI runs have insufficient sample data | MED | `low_sample_warning: true` raises recommendation threshold to 20%; suppress recommendations if < 3 runs |
-| pm_workflow SharePoint path conflicts with Jarvis paths | LOW | `Jarvis/` root path is distinct from pm_workflow's `PM/` root; no shared filenames |
-| prompt library.json diverges from actual prompt files | MED | CI Agent validates consistency between library entries and actual files on each run |
+| Phase 0 LLM wiring surfaces unexpected API behavior | MED | Wire `research.py` first; validate token capture before touching `obsidian_writer.py` |
+| Validation Agent adds excessive latency to overnight run | MED | `timeout_seconds: 30` in settings; crash → synthetic pass; monitor via stats report |
+| Validation thresholds prove miscalibrated | MED | All thresholds configurable in `settings.yaml`; tune after 2 weeks of real data |
+| Stats reporter crashes on malformed log files | LOW | Skip-and-warn pattern; no crash on bad data; missing files do not fail the job |
+| `pii.mode: standard` breaks existing tests | LOW | Run full test suite immediately after P0-6; if regressions exist, they reveal real PII in test fixtures |
+| Power Automate upsert replaces wrong file | MED | Validate with two sequential runs using the same task title; confirm single file in SharePoint |
+| First stats run with no prior data produces empty report | LOW | First-run case handled explicitly: scan all logs; produce report even if window is "all time" |
+| Node.js 24 action update breaks workflow | LOW | Update one action at a time; confirm Actions run passes before updating the second |
 
 ---
 
-## Open Items
+## Dependency Order
 
-- SharePoint `Jarvis/` root path must be confirmed with the Power Automate flow owner before Sprint 1
-- GCP service account IAM approval remains pending (Phase 3 dependency, not Phase 2)
-- `GITHUB_TOKEN` org-level permissions must be confirmed before Sprint 5 begins
+```
+Phase 0 (P0-1 through P0-8) — all blocking
+    ↓
+Sprint 1: Structured Logging
+    ↓
+Sprint 2: Validation Agent  (includes Sprint 3A digest quality summary)
+    ↓
+Sprint 3B: Stats Report
+    ↓
+Polish
+```
+
+### Parallel opportunities within sprints
+
+**Phase 0**: P0-3 (CI tests), P0-5 (concurrency), P0-6 (PII mode), P0-7 (Node.js) are independent and can be done in parallel. P0-1 and P0-2 should be sequential (wire research first, validate, then obsidian_writer). P0-8 (Power Automate) can be done in parallel with any Python changes.
+
+**Sprint 1**: `run_logger.py` functions can be implemented in parallel (start_run, log_agent_entry, finalize_run are independent). `power_automate.py` update can be done in parallel with `run_logger.py`.
+
+**Sprint 2**: `prompts/validation.md` and `validation.py` stub can be done in parallel. `validation.py` implementation depends on the prompt being finalized.

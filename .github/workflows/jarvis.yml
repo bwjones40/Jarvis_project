@@ -6,24 +6,46 @@ on:
       - jarvis/inbox.md
   schedule:
     - cron: "0 23 * * 1-5"
+    - cron: "0 23 * * 0,2"
   workflow_dispatch:
+    inputs:
+      run_stats_report:
+        description: "Run the stats report job instead of the overnight Jarvis pipeline"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
 
 jobs:
   run-jarvis:
-    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[jarvis-skip]') }}
+    if: >-
+      ${{
+        (
+          github.event_name == 'push' &&
+          !contains(github.event.head_commit.message, '[jarvis-skip]')
+        ) ||
+        (
+          github.event_name == 'schedule' &&
+          github.event.schedule == '0 23 * * 1-5'
+        ) ||
+        (
+          github.event_name == 'workflow_dispatch' &&
+          inputs.run_stats_report != true
+        )
+      }}
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    concurrency:
+      group: jarvis-run
+      cancel-in-progress: false
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v5.3.0
         with:
           python-version: "3.12"
           cache: "pip"
@@ -35,6 +57,9 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python -m orchestrator.utils.anthropic_smoke --model claude-haiku-4-5 --prompt hello
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
 
       - name: Run Jarvis
         env:
@@ -56,37 +81,40 @@ jobs:
           git commit -m "jarvis: update run state after run [jarvis-skip]"
           git push
 
-      - name: Power Automate smoke test
+  run-stats-report:
+    if: >-
+      ${{
+        (
+          github.event_name == 'schedule' &&
+          github.event.schedule == '0 23 * * 0,2'
+        ) ||
+        (
+          github.event_name == 'workflow_dispatch' &&
+          inputs.run_stats_report == true
+        )
+      }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: jarvis-stats
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4.2.2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5.3.0
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Run stats report
         env:
           POWER_AUTOMATE_WEBHOOK_URL: ${{ secrets.POWER_AUTOMATE_WEBHOOK_URL }}
-        if: ${{ env.POWER_AUTOMATE_WEBHOOK_URL != '' }}
-        run: |
-          python - <<'PY'
-          import os
-          import sys
-          from datetime import datetime, timezone
-          from pathlib import Path
-
-          repo_root = Path.cwd()
-          sys.path.insert(0, str(repo_root))
-
-          from orchestrator.utils.power_automate import post_files
-
-          timestamp = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-          payload = [
-              {
-                  "vault_path": "jarvis/test.md",
-                  "content": f"# PA Test\n\nSmoke test completed at {timestamp}."
-              }
-          ]
-          metadata = {
-              "task_id": "smoke-test",
-              "run_timestamp": timestamp,
-              "total_files": 1,
-          }
-          ok = post_files(payload, metadata, os.environ["POWER_AUTOMATE_WEBHOOK_URL"])
-          if ok:
-              print("Power Automate smoke test succeeded.")
-          else:
-              print("WARNING: Power Automate smoke test failed.")
-          PY
+        run: python orchestrator/main.py --mode stats_report

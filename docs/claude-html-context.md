@@ -12,7 +12,7 @@ Preserve these labels in the HTML: `[Confirmed]`, `[Inferred]`, `[Unverified]`, 
 - [Confirmed] Operator task input is `jarvis/inbox.md`.
 - [Confirmed] Daytime GCP discovery can also be run locally with `python orchestrator/main.py --task "..."`.
 - [Confirmed] Output is a batch of markdown files posted to Power Automate.
-- [Confirmed] The current implementation is deterministic and does not call Anthropic, despite Anthropic dependency, model labels, and prompt files.
+- [Confirmed] The task runtime is deterministic and does not use Anthropic for task execution, but GitHub Actions now performs a real Anthropic smoke test before running Jarvis.
 - [Inferred] The repo is a validated MVP scaffold for safe automation, with real Claude reasoning deferred.
 
 Evidence: `orchestrator/main.py`, `.github/workflows/jarvis.yml`, `orchestrator/agents/*.py`, `requirements.txt`, `prompts/*.md`.
@@ -27,7 +27,7 @@ Evidence: `orchestrator/main.py`, `.github/workflows/jarvis.yml`, `orchestrator/
 - Context cap through `research.max_tokens_per_note`.
 - Obsidian task record generation.
 - Daily digest generation.
-- Weekly cost rollup from recent task files.
+- Weekly cost rollup from recent task files plus persisted `jarvis/usage-history.json`.
 - Lesson file and knowledge update payload generation.
 - Draft communication staging with `[HUMAN APPROVAL REQUIRED]`.
 - Power Automate webhook client with retry and `jarvis/run-errors.log`.
@@ -60,6 +60,11 @@ Evidence: `orchestrator/main.py`, `.github/workflows/jarvis.yml`, `orchestrator/
 - Future planning: `specs/002-jarvis-phase2/`, `specs/003-phase2-agent-ecosystem/`
 - Tests: `tests/`
 - Validation evidence: `specs/001-jarvis-mvp/Verifcation-evidence/`
+- Persisted weekly rollup state: `jarvis/usage-history.json`
+
+Current regression baseline:
+
+- `Ran 50 tests ... OK`
 
 ## Architecture Summary
 
@@ -117,11 +122,11 @@ Workflow schedule:
 ## Risks, Gaps, and Unknowns
 
 - [Confirmed] `pii.mode` is currently `off` in `config/settings.yaml`; use `strict` for sensitive runs.
-- [Confirmed] Fresh end-to-end evidence is needed to prove `pii.mode: off` after the latest fix.
+- [Confirmed] Phase 6 evidence is current for weekly rollup, context pruning, and research `cache_hit`.
 - [Confirmed] Unit tests are not run in GitHub Actions.
 - [Confirmed] Power Automate smoke test writes `jarvis/test.md` on normal runs.
 - [Confirmed] Task IDs can collide.
-- [Confirmed] Real LLM calls are absent.
+- [Confirmed] Real Anthropic task execution is absent even though the workflow smoke test is real.
 - [Confirmed] Timeout settings are not enforced.
 - [Unverified] Live Power Automate upsert behavior.
 - [Unverified] OneDrive sync reliability.
@@ -140,6 +145,9 @@ Workflow schedule:
 - Python could not find `bq` until Windows shim resolution was added.
 - Per-table schema failures and empty table-list output had to degrade locally rather than fail the whole GCP run.
 - `pii.mode: off` evidence showed remaining redaction markers until sanitizer paths were corrected.
+- Rejected pushes repeatedly occurred because GitHub Actions wrote back cleared inbox state and `jarvis/usage-history.json` to `main`.
+- `git rebase --continue` can fail if `code --wait` is broken; `$env:GIT_EDITOR='true'` is a working recovery.
+- Detached `HEAD` and `rebase-merge` states were caused by committing during an active rebase.
 
 ## Recommended Stabilization Steps
 
@@ -151,6 +159,34 @@ Workflow schedule:
 6. Add workflow concurrency.
 7. Move smoke testing out of normal production runs.
 8. Design the Anthropic client boundary before adding model calls.
+9. Publish a short operator git recovery runbook for workflow-bot conflicts.
+
+## Known Git Failure Recovery
+
+```powershell
+git status --short --branch
+git fetch origin
+$env:GIT_EDITOR='true'
+git pull --rebase origin main
+```
+
+If `jarvis/inbox.md` conflicts:
+
+```powershell
+git add jarvis/inbox.md
+git rebase --continue
+git push origin main
+```
+
+If the rebase state is already broken:
+
+```powershell
+git rebase --abort
+git fetch origin
+$env:GIT_EDITOR='true'
+git pull --rebase origin main
+git push origin main
+```
 
 ## Recommended Next Improvements
 

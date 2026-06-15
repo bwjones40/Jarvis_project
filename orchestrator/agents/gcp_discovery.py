@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+agent_version = "1.0.0"
+
 import json
 import shutil
 import subprocess

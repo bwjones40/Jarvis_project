@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
@@ -9,6 +10,8 @@ from typing import Any
 
 from orchestrator.utils.pii_guard import contains_pii, get_pii_mode, sanitize_text
 from orchestrator.utils.token_logger import log_agent_run
+
+agent_version = "1.0.0"
 
 
 def run_orchestrator(
@@ -86,8 +89,13 @@ def _build_routing(agents_needed: list[str], mode: str) -> dict[str, list[str]]:
 
 
 def _build_task_id(title: str) -> str:
+    run_id = os.environ.get("GITHUB_RUN_ID")
+    if run_id:
+        prefix = run_id
+    else:
+        prefix = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     slug = "-".join(part for part in "".join(char.lower() if char.isalnum() else "-" for char in title).split("-") if part)
-    return f"task-001-{slug or 'untitled-task'}"
+    return f"task-{prefix}-{(slug or 'untitled-task')[:40]}"
 
 
 def _prepare_knowledge_context(vault_notes: list[dict[str, Any]], settings: dict[str, Any], pii_mode: str) -> list[dict[str, Any]]:
