@@ -1,19 +1,19 @@
 # Jarvis Inbox
 
-## Task: Replace this title before commit
+## Task: Phase 6 Cost Rollup Task 1 v3
 **Priority**: medium
 **Mode**: overnight
 **Agents needed**: orchestrator, research, obsidian
 **Due**: next run
 
 ### Request
-Describe the task Jarvis should complete before the next run.
+Generate a short Phase 6 validation task so I can verify the token usage table and weekly cost rollup.
 
 ### Context
-Optional project context, links, or non-PII background.
+Phase 6 verification task 1 of 3.
 
 ### Copilot handoff
-Optional manual handoff instructions for Copilot.
+None.
 
 ---
 _Clear this file after each run. Jarvis archives completed tasks to jarvis/tasks/_
