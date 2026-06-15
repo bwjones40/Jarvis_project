@@ -1,13 +1,13 @@
 # Jarvis Inbox
 
-## Task: Research Tyson Employee Count v2
+## Task: Replace this title before commit
 **Priority**: medium
-**Mode**: daytime
-**Agents needed**: orchestrator, research
+**Mode**: overnight
+**Agents needed**: orchestrator, research, obsidian
 **Due**: next run
 
 ### Request
-Please prompt claude with the question roughly how many employees does Tyson have in 2025.
+Describe the task Jarvis should complete before the next run.
 
 ### Context
 Optional project context, links, or non-PII background.
@@ -16,3 +16,4 @@ Optional project context, links, or non-PII background.
 Optional manual handoff instructions for Copilot.
 
 ---
+_Clear this file after each run. Jarvis archives completed tasks to jarvis/tasks/_
