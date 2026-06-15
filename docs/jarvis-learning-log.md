@@ -6,127 +6,191 @@
 
 Error / Issue / Fragile Pattern: Initial webhook URL returned `DirectApiAuthorizationRequired`.
 
-Evidence: Artifact Evidence: user-provided PowerShell/Power Automate validation transcript.
+Evidence: Artifact Evidence: user-provided Power Automate validation transcript.
 
-Context: The copied URL used the `environment.api.powerplatform.com/.../automations/direct/...` shape without signed `sp`, `sv`, and `sig` parameters.
+Context: The copied URL used the `environment.api.powerplatform.com/.../automations/direct/...` shape rather than a signed HTTP trigger URL.
 
-Likely Root Cause: Trigger permission was set to tenant-authenticated and/or the copied URL was the direct invoke endpoint rather than the signed HTTP trigger URL.
+Likely Root Cause: Trigger access or copied URL shape was wrong for anonymous secret-by-URL invocation.
 
-Current Status: Resolved by setting trigger access to anyone and using the signed URL.
+Current Status: Resolved during validation by using the signed URL with trigger access configured appropriately.
 
-Prevention Guidance: Document expected URL shape and require `sig=` in setup checks.
+Prevention Guidance: Document the expected URL shape and require signed URL parameters such as `sig=`.
 
 Confidence Level: High.
 
-### Parse JSON Failed with Null Content
+### Power Automate Parse JSON Failed With Null Content
 
-Error / Issue / Fragile Pattern: Power Automate `Parse JSON` failed because required property `content` was null.
+Error / Issue / Fragile Pattern: Power Automate `Parse JSON` failed because required `content` was null.
 
-Evidence: Artifact Evidence: user screenshot and error text.
+Evidence: Artifact Evidence: user screenshot/error text during Phase 4 validation.
 
-Context: HTTP trigger already had a request-body schema, and the Parse JSON step was parsing the wrong input.
+Context: The HTTP trigger already exposed the request-body schema, while the Parse JSON action parsed the wrong input.
 
-Likely Root Cause: Duplicate parsing and incorrect content source in the flow.
+Likely Root Cause: Duplicate parsing and incorrect dynamic content source.
 
-Current Status: Resolved by removing Parse JSON and using `triggerBody()?['files']`.
+Current Status: Resolved by using trigger body fields directly.
 
-Prevention Guidance: Keep the PA flow field mapping documented outside screenshots.
+Prevention Guidance: Keep exact Power Automate field mappings in repo documentation, not only screenshots.
 
 Confidence Level: High.
 
 ### SharePoint Folder Mapping Initially Flattened Paths
 
-Error / Issue / Fragile Pattern: Files were written outside their intended subfolders.
+Error / Issue / Fragile Pattern: Files did not land in expected nested vault paths.
 
-Evidence: Artifact Evidence: user validation transcript showing file path debugging.
+Evidence: Artifact Evidence: Phase 4 validation transcript and screenshots.
 
-Context: `vault_path` values like `jarvis/digests/YYYY-MM-DD.md` must be split into parent folder and file name.
+Context: Payload paths such as `jarvis/digests/YYYY-MM-DD.md` require parent folder extraction and filename extraction.
 
-Likely Root Cause: `last(split(...))` was used for the file name while folder path was hardcoded too shallow.
+Likely Root Cause: Initial flow path expressions did not correctly split `vault_path`.
 
-Current Status: Operator validation showed nested digest path creation worked after flow adjustment.
+Current Status: Operator validation showed nested task, digest, and lesson outputs after flow adjustment.
 
-Prevention Guidance: Use `vault_path` parent-folder extraction and keep parent folders pre-created or create them automatically.
+Prevention Guidance: Export or document the exact Power Automate expressions for parent folder and file name.
 
 Confidence Level: High.
 
 ### Draft Communication Section Was Empty
 
-Error / Issue / Fragile Pattern: Section 4 output had `## Draft Communications` but `_(none)_`.
+Error / Issue / Fragile Pattern: A task asking for a Teams draft produced `## Draft Communications` with `_(none)_`.
 
-Evidence: Artifact Evidence: generated `task-001-draft-teams-message.md` provided by user; regression test in `tests/test_obsidian_writer.py`.
+Evidence: Artifact Evidence: generated task file during Phase 4 validation; regression coverage in `tests/test_obsidian_writer.py`.
 
-Context: The task requested a Teams draft, but the implementation only scanned previous agent output for draft-like text.
+Context: The first implementation only scanned previous agent output for draft-like text.
 
-Likely Root Cause: No previous agent generated a draft body.
+Likely Root Cause: No upstream agent had generated draft body content.
 
 Current Status: Fixed by request-driven draft staging in `orchestrator/agents/obsidian_writer.py`.
 
-Prevention Guidance: Keep explicit tests for request-driven draft tasks and verify no send APIs are introduced.
+Prevention Guidance: Keep tests proving draft requests create a flagged draft and no send capability exists.
 
 Confidence Level: High.
 
-### PII Name Persisted in Vault Output
+### PII Name Persisted in Vault Output Under Strict Behavior
 
-Error / Issue / Fragile Pattern: Section 5 redacted email but left a person-name pattern in the task request.
+Error / Issue / Fragile Pattern: Earlier output redacted email but left a person-name pattern.
 
-Evidence: Artifact Evidence: generated Section 5 task output; regression tests in `tests/test_obsidian_writer.py` and `tests/test_orchestrator.py`.
+Evidence: Artifact Evidence: generated validation output; tests in `tests/test_obsidian_writer.py`, `tests/test_orchestrator.py`, `tests/test_pii_guard.py`.
 
-Context: Initial sanitizer only robustly handled email addresses.
+Context: The sanitizer originally emphasized email patterns.
 
-Likely Root Cause: PII guard lacked name-like pattern redaction and the writer used the original task request text.
+Likely Root Cause: Name-like regex handling was missing or not applied everywhere.
 
-Current Status: Fixed for simple capitalized two-word name patterns in `orchestrator/utils/pii_guard.py`.
+Current Status: Fixed for simple capitalized two-word names in `strict` mode.
 
-Prevention Guidance: Expand test cases before using real enterprise text.
+Prevention Guidance: Expand PII fixture coverage before processing real sensitive text.
 
 Confidence Level: High.
 
 ### Cleared Inbox Template Became a Fake Task
 
-Error / Issue / Fragile Pattern: Section 6 no-task validation created `task-001-replace-this-title-before-commit`.
+Error / Issue / Fragile Pattern: A no-task run created `task-001-replace-this-title-before-commit`.
 
-Evidence: Artifact Evidence: user-provided fake task and digest; tests in `tests/test_inbox_parser.py` and `tests/test_orchestrator.py`.
+Evidence: Artifact Evidence: user-provided Section 6 output; tests in `tests/test_inbox_parser.py`.
 
-Context: The cleared template was valid according to the parser.
+Context: The default cleared template was syntactically valid as a task.
 
-Likely Root Cause: Only empty files returned `None`; template state was not treated as no-task.
+Likely Root Cause: Parser treated placeholder content as real work.
 
-Current Status: Fixed by template sentinel detection in `orchestrator/utils/inbox_parser.py`.
+Current Status: Fixed by template sentinel detection.
 
-Prevention Guidance: Keep template text centralized or add a helper to avoid future drift.
-
-Confidence Level: High.
-
-### Git Push Rejections After Workflow Runs
-
-Error / Issue / Fragile Pattern: Pushes were rejected with `fetch first` or `non-fast-forward`.
-
-Evidence: Artifact Evidence: user-provided Git output; workflow commits inbox-clearing changes.
-
-Context: GitHub Actions commits `jarvis: clear inbox after run [jarvis-skip]` back to `main`.
-
-Likely Root Cause: Local branch fell behind remote bot commits.
-
-Current Status: Mitigation is `git pull --rebase origin main` before new task pushes.
-
-Prevention Guidance: Document the required rebase workflow and avoid force pushes.
+Prevention Guidance: Centralize the inbox template so parser tests and `main.py` cannot drift.
 
 Confidence Level: High.
 
-### Python Cache Files Were Tracked
+### Python Bytecode Files Appeared in Git Status
 
-Error / Issue / Fragile Pattern: `__pycache__/*.pyc` files appeared as modified and blocked rebase.
+Error / Issue / Fragile Pattern: `__pycache__` files were modified after tests.
 
-Evidence: Artifact Evidence: user-provided `git status --short`; `.gitignore` now excludes caches.
+Evidence: Artifact Evidence: user `git status --short` output; `.gitignore`.
 
-Context: Tests generated bytecode and the files had previously been tracked.
+Context: Tests generated bytecode, and some bytecode had previously been tracked.
 
-Likely Root Cause: `.gitignore` was added after cache files entered the index.
+Likely Root Cause: Cache files entered Git before ignore rules were stable.
 
-Current Status: Resolved with `git rm --cached` guidance.
+Current Status: Mitigated by using `$env:PYTHONDONTWRITEBYTECODE='1'` and ignore rules.
 
-Prevention Guidance: Keep `.gitignore` before running tests in new repos.
+Prevention Guidance: Keep bytecode ignored and run tests with `PYTHONDONTWRITEBYTECODE=1` during validation.
+
+Confidence Level: High.
+
+### GCP `bq ls --project` Flag Failed
+
+Error / Issue / Fragile Pattern: Local `bq ls` returned an unknown flag error for `--project`.
+
+Evidence: Artifact Evidence: user Scenario 4 terminal output; regression test `test_dataset_listing_uses_bq_project_id_flag`.
+
+Context: The plan used `--project={project}`, but the installed BQ CLI expected `--project_id`.
+
+Likely Root Cause: CLI flag compatibility mismatch.
+
+Current Status: Fixed in `orchestrator/agents/gcp_discovery.py` by using `--project_id=<project>`.
+
+Prevention Guidance: Prefer tested local CLI syntax over planned syntax when they differ; keep regression tests for Windows/operator CLI behavior.
+
+Confidence Level: High.
+
+### GCP Subprocess Could Not Find `bq`
+
+Error / Issue / Fragile Pattern: Python run failed with `[WinError 2] The system cannot find the file specified`.
+
+Evidence: Artifact Evidence: user Scenario 4 terminal output; regression test `test_bq_executable_resolves_windows_command_shim`.
+
+Context: Running `bq` from Python on Windows can require resolving `bq.cmd`.
+
+Likely Root Cause: Windows command shim resolution.
+
+Current Status: Fixed by resolving `bq`, `bq.cmd`, `bq.exe`, or `bq.bat` with `shutil.which`.
+
+Prevention Guidance: Keep Windows shim resolution for CLI tools launched from Python.
+
+Confidence Level: High.
+
+### GCP Schema Lookup Failure Stopped Discovery
+
+Error / Issue / Fragile Pattern: `bq show --schema` failed for an individual table and caused the whole run to degrade.
+
+Evidence: Artifact Evidence: command failed for a table name with spaces; regression test `test_schema_lookup_failure_does_not_fail_entire_discovery`.
+
+Context: Dataset/table listing was useful even when schema metadata for one table failed.
+
+Likely Root Cause: Schema lookup was treated as mandatory.
+
+Current Status: Fixed by making schema lookup best-effort and recording "Table was visible; schema metadata was not available."
+
+Prevention Guidance: Treat per-table metadata failures as partial table facts, not global discovery failure.
+
+Confidence Level: High.
+
+### GCP Empty/Non-JSON Table Output Caused JSON Parse Failure
+
+Error / Issue / Fragile Pattern: Scenario 4 failed with `Expecting value: line 1 column 1 (char 0)`.
+
+Evidence: Artifact Evidence: user terminal output; regression test `test_table_list_json_failure_does_not_fail_entire_discovery`.
+
+Context: One dataset produced empty or non-JSON table list output while dataset discovery itself succeeded.
+
+Likely Root Cause: JSON parsing assumed every `bq ls --format=json <dataset>` call would return JSON.
+
+Current Status: Fixed by treating that dataset as having no visible tables.
+
+Prevention Guidance: Parse CLI output defensively and degrade per dataset.
+
+Confidence Level: High.
+
+### `pii.mode: off` Evidence Was Not Clean
+
+Error / Issue / Fragile Pattern: A Scenario 4 output captured after setting `pii.mode: off` still contained `[REDACTED_NAME]`.
+
+Evidence: Artifact Evidence: user attachment searched during validation; code fix in `obsidian_writer.py`; tests `test_off_pii_mode_preserves_name_like_table_names` and `test_digest_honors_off_pii_mode`.
+
+Context: Structured GCP output preserved names, but generated summary/digest paths still showed redaction markers.
+
+Likely Root Cause: At least one sanitizer call path was still defaulting to strict mode or the attachment came from a pre-fix run.
+
+Current Status: Code fix and regression tests pass. Fresh end-to-end Scenario 4 evidence is still needed.
+
+Prevention Guidance: After changing PII mode, search full run output and vault files for `REDACTED`, `[REDACTED_NAME]`, and `[REDACTED_EMAIL]`.
 
 Confidence Level: High.
 
@@ -134,76 +198,95 @@ Confidence Level: High.
 
 ### Real LLM Execution Is Absent
 
-Evidence: `requirements.txt` lists `anthropic`, but no source code calls Anthropic.
+Evidence: `requirements.txt` lists `anthropic`, prompts exist, and GitHub Actions checks the secret, but no source code constructs an Anthropic client.
 
 Context: Specs describe Claude-backed agents.
 
-Likely Root Cause: MVP implementation prioritized plumbing and validation before real model calls.
+Likely Root Cause: MVP focused on plumbing, validation, and deterministic safety before real model calls.
 
 Current Status: Not implemented.
 
-Prevention Guidance: Before adding Anthropic calls, define PII redaction boundary, prompt loading, token capture, retries, and test fixtures.
+Prevention Guidance: Add an LLM boundary deliberately: prompt loading, redaction, retry/timeout policy, token capture, and fixtures.
 
 Confidence Level: High.
 
 ### Task ID Collisions Are Likely
 
-Evidence: `_build_task_id()` always prefixes `task-001-`.
+Evidence: `_build_task_id()` always returns `task-001-<slug>`.
 
-Context: Repeated tasks with the same title will collide.
+Context: Repeated titles or repeated validation runs can collide.
 
 Likely Root Cause: Early MVP simplification.
 
 Current Status: Not fixed.
 
-Prevention Guidance: Use timestamp, GitHub run ID, or persisted counter.
+Prevention Guidance: Use timestamp, GitHub run ID, or a persisted counter.
 
 Confidence Level: High.
 
-### Lesson Files Are Not Truly Append-Only From Repo Code Alone
+### Power Automate Behavior Can Drift Outside Git
 
-Evidence: `obsidian_writer.py` returns only new content strings for lesson files; update/append semantics are external to PA.
+Evidence: No exported flow definition exists in repo; behavior was changed during validation.
 
-Context: Data model requires append-only AgentLesson entries.
+Context: Repo tests can pass while SharePoint writes fail or duplicate files.
 
-Likely Root Cause: File writes delegated to Power Automate.
+Likely Root Cause: Critical behavior lives in Power Automate UI rather than source control.
 
-Current Status: Partially implemented.
+Current Status: External and unverified from repo alone.
 
-Prevention Guidance: Implement PA get-existing-content/update or move append logic into Python with a synced vault path only if allowed.
+Prevention Guidance: Export the flow or create exact step-by-step docs with expressions.
+
+Confidence Level: High.
+
+### `pii.mode: off` Could Be Misused
+
+Evidence: `config/settings.yaml` currently sets `mode: off`.
+
+Context: This is useful for local metadata discovery, but conflicts with a strict "no PII" production posture.
+
+Likely Root Cause: User requested optional PII handling for non-sensitive runs.
+
+Current Status: Implemented but policy-sensitive.
+
+Prevention Guidance: Document mode selection before every validation or production run; consider CI guardrails.
 
 Confidence Level: Medium.
 
 ## 3. Fragile Areas
 
-- [Confirmed] Current cron is `*/5 * * * *` for validation. Restore it after Section 6. Evidence: `.github/workflows/jarvis.yml`.
-- [Confirmed] Power Automate flow is unversioned. Evidence: no exported flow file in repo.
-- [Confirmed] PII detection is regex-based and allowlist-based. Evidence: `orchestrator/utils/pii_guard.py`.
-- [Confirmed] Vault search is simple keyword scoring. Evidence: `orchestrator/utils/vault_reader.py`.
-- [Confirmed] Workflow smoke test writes `jarvis/test.md` on every run with a PA secret. Evidence: `.github/workflows/jarvis.yml`.
-- [Confirmed] GitHub Actions warns about Node.js 20 actions deprecation. Artifact Evidence: user-provided workflow warning.
+- [Confirmed] `pii_guard.py` uses simple regexes and a small safe-phrase allowlist. Evidence: `orchestrator/utils/pii_guard.py`.
+- [Confirmed] GCP discovery depends on local `bq` installation/auth and table-name handling. Evidence: `gcp_discovery.py`, `tests/test_gcp_discovery.py`.
+- [Confirmed] `obsidian_writer.py` mutates `task_result` while rendering outputs. Evidence: `orchestrator/agents/obsidian_writer.py`.
+- [Confirmed] Power Automate is unversioned but central to production output. Evidence: no flow export in repo.
+- [Confirmed] GitHub Actions commits back to the same branch after successful post. Evidence: `.github/workflows/jarvis.yml`.
+- [Confirmed] Unit tests do not run in GitHub Actions. Evidence: `.github/workflows/jarvis.yml`.
+- [Confirmed] Workflow smoke test writes `jarvis/test.md` whenever webhook secret exists. Evidence: `.github/workflows/jarvis.yml`.
+- [Inferred] Future Phase 2 specs may confuse agents because they are present but not implemented. Evidence: `specs/002-jarvis-phase2/`, `specs/003-phase2-agent-ecosystem/`.
 
 ## 4. Repeated Mistakes or Risk Patterns
 
-- [Confirmed] External system behavior was initially inferred from docs rather than run-history evidence. Power Automate debugging improved once run inputs/outputs were inspected.
-- [Confirmed] Placeholder/template content repeatedly behaved like real work until explicit sentinel logic was added.
-- [Confirmed] Git workflow conflicts recur because automation writes to the same branch as the operator.
-- [Inferred] Specs and plans have outpaced implementation, increasing the chance future agents assume features exist.
+- [Confirmed] Planned docs and runtime behavior drifted repeatedly; code/runtime evidence should be treated as stronger than task checkboxes.
+- [Confirmed] Validation revealed environment-specific CLI behavior that plans did not capture.
+- [Confirmed] Placeholder content and default templates can be interpreted as real work unless explicitly guarded.
+- [Confirmed] External platform behavior, especially Power Automate, cannot be safely inferred from repo code alone.
+- [Inferred] PII behavior is easy to misunderstand because original docs said "No PII" while current code supports `off`.
 
 ## 5. Prevention Guidance
 
-1. Keep a "current truth" section in docs that distinguishes code behavior from planned behavior.
-2. Run `python -m unittest discover -s tests` before pushing implementation fixes.
-3. Run `git pull --rebase origin main` before editing `jarvis/inbox.md`.
-4. Inspect Power Automate run inputs/outputs before changing Python when vault files are missing.
-5. Restore the cron schedule immediately after scheduled-run validation.
-6. Add regression tests for each validation failure before fixing it.
-7. Do not add real LLM calls until PII guard, prompt loading, retry behavior, and token logging are designed together.
+1. Run `$env:PYTHONDONTWRITEBYTECODE='1'; python -m unittest discover -s tests` before claiming implementation complete.
+2. Add the unit-test command to GitHub Actions.
+3. Search run output and generated vault files for `REDACTED` after any `pii.mode` change.
+4. Treat local GCP validation as environment-dependent; capture `where bq`, auth context, command output, and Scenario 4 output.
+5. Export or document Power Automate flow changes immediately after they are validated.
+6. Keep evidence folders separate from runtime output and avoid committing generated vault files unless intentionally documenting proof.
+7. Before adding Anthropic calls, design the trust boundary and token capture as a single change.
+8. Before pushing a new inbox task, pull/rebase because GitHub Actions may have committed a cleared inbox.
 
 ## 6. Evidence Gaps
 
-- No exported Power Automate flow definition.
-- No captured GitHub Actions logs checked into the repo.
-- No screenshots or validation evidence folder checked into the repo.
-- No live SharePoint/OneDrive sync diagnostics in source control.
-- No documented current pass/fail matrix for Sections 1-6.
+- [Unverified] Current live Power Automate flow definition.
+- [Unverified] Fresh Scenario 4 output after the `pii.mode: off` sanitizer-path fix.
+- [Unverified] Phase 6 evidence folder completeness after current docs/code changes.
+- [Unverified] Whether GitHub Actions secrets are valid for real Anthropic calls.
+- [Unverified] Whether OneDrive sync timing meets morning-digest expectations.
+- [Unverified] Whether generated screenshots cover all acceptance criteria without relying on implicit context.

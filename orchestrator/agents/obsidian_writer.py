@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from orchestrator.utils.pii_guard import sanitize_text
+from orchestrator.utils.pii_guard import get_pii_mode, sanitize_text
 from orchestrator.utils.token_logger import calculate_cost, log_agent_run
 from orchestrator.utils.vault_reader import note_exists, read_note
 
@@ -24,8 +24,9 @@ def build_vault_outputs(
     if task_result is None:
         return [{"vault_path": digest_path, "content": _build_empty_digest()}]
 
+    pii_mode = get_pii_mode(settings)
     usage = type("Usage", (), {"input_tokens": 0, "output_tokens": 0})()
-    task_result["draft_communications"] = _stage_draft_communications(task_result, task or {})
+    task_result["draft_communications"] = _stage_draft_communications(task_result, task or {}, pii_mode)
     task_file_path = f"{vault_settings.get('tasks_dir', 'jarvis/tasks')}/{task_result['task_id']}.md"
     task_result["agents_executed"].append(
         log_agent_run(
@@ -42,18 +43,19 @@ def build_vault_outputs(
         )
     )
 
-    lesson_files = _build_lesson_files(task_result, vault_settings.get("lessons_dir", "jarvis/agents"), vault_root)
-    knowledge_files = _build_knowledge_updates(task_result, vault_root)
+    lesson_files = _build_lesson_files(task_result, vault_settings.get("lessons_dir", "jarvis/agents"), vault_root, pii_mode)
+    knowledge_files = _build_knowledge_updates(task_result, vault_root, pii_mode)
     task_result["knowledge_updates"] = [
         task_file_path,
         *(item["vault_path"] for item in lesson_files),
         *(item["vault_path"] for item in knowledge_files),
     ]
-    task_markdown = _build_task_record(task_result, task or {})
+    task_markdown = _build_task_record(task_result, task or {}, pii_mode)
     digest_markdown = _build_digest(
         task_result,
         vault_root=vault_root,
         tasks_dir=vault_settings.get("tasks_dir", "jarvis/tasks"),
+        pii_mode=pii_mode,
     )
     outputs = [
         {
@@ -70,8 +72,8 @@ def build_vault_outputs(
     return outputs
 
 
-def _build_task_record(task_result: dict[str, Any], task: dict[str, Any]) -> str:
-    request_text = sanitize_text(task.get("request", task_result.get("task", {}).get("request", "")))
+def _build_task_record(task_result: dict[str, Any], task: dict[str, Any], pii_mode: str) -> str:
+    request_text = sanitize_text(task.get("request", task_result.get("task", {}).get("request", "")), mode=pii_mode)
     total_input = sum(run["input_tokens"] for run in task_result["agents_executed"])
     total_output = sum(run["output_tokens"] for run in task_result["agents_executed"])
     total_duration = sum(run["duration_seconds"] for run in task_result["agents_executed"])
@@ -86,7 +88,7 @@ def _build_task_record(task_result: dict[str, Any], task: dict[str, Any]) -> str
     rows.append(f"| **Total** |  | **{total_input}** | **{total_output}** | **{total_duration:.1f}s** |")
     return "\n".join(
         [
-            f"# Task: {sanitize_text(task_result['task_title'])}",
+            f"# Task: {sanitize_text(task_result['task_title'], mode=pii_mode)}",
             "",
             f"**Task ID**: {task_result['task_id']}",
             f"**Run**: {task_result['run_timestamp']}",
@@ -99,7 +101,7 @@ def _build_task_record(task_result: dict[str, Any], task: dict[str, Any]) -> str
             "",
             "## Output",
             "",
-            sanitize_text(task_result["output_summary"]),
+            sanitize_text(task_result["output_summary"], mode=pii_mode),
             "",
             "## Token Usage",
             "",
@@ -120,7 +122,7 @@ def _build_task_record(task_result: dict[str, Any], task: dict[str, Any]) -> str
     )
 
 
-def _build_digest(task_result: dict[str, Any], vault_root: str, tasks_dir: str) -> str:
+def _build_digest(task_result: dict[str, Any], vault_root: str, tasks_dir: str, pii_mode: str) -> str:
     total_input = sum(run["input_tokens"] for run in task_result["agents_executed"])
     total_output = sum(run["output_tokens"] for run in task_result["agents_executed"])
     estimated_cost = calculate_cost(task_result["agents_executed"])
@@ -136,7 +138,7 @@ def _build_digest(task_result: dict[str, Any], vault_root: str, tasks_dir: str) 
             "",
             "## Tasks Completed",
             "",
-            f"- {task_result['task_id']} — {sanitize_text(task_result['task_title'])}",
+            f"- {task_result['task_id']} — {sanitize_text(task_result['task_title'], mode=pii_mode)}",
             "",
             "## Usage",
             "",
@@ -230,7 +232,7 @@ def _extract_estimated_cost(content: str) -> float:
     return float(match.group(1)) if match else 0.0
 
 
-def _build_lesson_files(task_result: dict[str, Any], lessons_dir: str, vault_root: str) -> list[dict[str, str]]:
+def _build_lesson_files(task_result: dict[str, Any], lessons_dir: str, vault_root: str, pii_mode: str) -> list[dict[str, str]]:
     outputs: list[dict[str, str]] = []
     run_date = task_result["run_timestamp"][:10]
     for run in task_result["agents_executed"]:
@@ -240,7 +242,7 @@ def _build_lesson_files(task_result: dict[str, Any], lessons_dir: str, vault_roo
             [
                 f"## {run_date} — {task_result['task_id']}",
                 f"- What failed: {'; '.join(run['errors']) if run['errors'] else 'nothing'}",
-                f"- What worked: {sanitize_text(task_result['output_summary'])}",
+                f"- What worked: {sanitize_text(task_result['output_summary'], mode=pii_mode)}",
                 "- Pattern discovered: Sequential task handoff remains stable.",
                 "- Tokens saved: 0",
                 "",
@@ -251,7 +253,7 @@ def _build_lesson_files(task_result: dict[str, Any], lessons_dir: str, vault_roo
     return outputs
 
 
-def _build_knowledge_updates(task_result: dict[str, Any], vault_root: str) -> list[dict[str, str]]:
+def _build_knowledge_updates(task_result: dict[str, Any], vault_root: str, pii_mode: str) -> list[dict[str, str]]:
     outputs: list[dict[str, str]] = []
     for path in task_result.get("knowledge_updates", []):
         current = read_note(path, vault_root) if note_exists(path, vault_root) else ""
@@ -259,16 +261,16 @@ def _build_knowledge_updates(task_result: dict[str, Any], vault_root: str) -> li
             [
                 current.strip(),
                 f"## Update from {task_result['task_id']}",
-                sanitize_text(task_result["output_summary"]),
+                sanitize_text(task_result["output_summary"], mode=pii_mode),
             ]
         ).strip()
         outputs.append({"vault_path": path, "content": updated + "\n"})
     return outputs
 
 
-def _stage_draft_communications(task_result: dict[str, Any], task: dict[str, Any]) -> list[dict[str, str]]:
+def _stage_draft_communications(task_result: dict[str, Any], task: dict[str, Any], pii_mode: str) -> list[dict[str, str]]:
     drafts: list[dict[str, str]] = []
-    request_text = sanitize_text(task.get("request", task_result.get("task", {}).get("request", "")))
+    request_text = sanitize_text(task.get("request", task_result.get("task", {}).get("request", "")), mode=pii_mode)
     lowered_request = request_text.lower()
     if "draft a teams message" in lowered_request or "teams message" in lowered_request:
         drafts.append(
@@ -277,7 +279,7 @@ def _stage_draft_communications(task_result: dict[str, Any], task: dict[str, Any
                 "task_id": task_result["task_id"],
                 "channel": "teams",
                 "recipient": "Aprilia team",
-                "subject": sanitize_text(task_result["task_title"]),
+                "subject": sanitize_text(task_result["task_title"], mode=pii_mode),
                 "body": "[HUMAN APPROVAL REQUIRED]\nThe work is complete and the team can request follow-up help at any time.",
                 "approval_status": "pending",
                 "flag": "[HUMAN APPROVAL REQUIRED]",
@@ -290,7 +292,7 @@ def _stage_draft_communications(task_result: dict[str, Any], task: dict[str, Any
                 "task_id": task_result["task_id"],
                 "channel": "email",
                 "recipient": "Operator-reviewed recipient",
-                "subject": sanitize_text(task_result["task_title"]),
+                "subject": sanitize_text(task_result["task_title"], mode=pii_mode),
                 "body": "[HUMAN APPROVAL REQUIRED]\nDraft email content requires operator review before sending.",
                 "approval_status": "pending",
                 "flag": "[HUMAN APPROVAL REQUIRED]",
@@ -298,7 +300,7 @@ def _stage_draft_communications(task_result: dict[str, Any], task: dict[str, Any
         )
     draft_keywords = ("email", "teams", "send", "notify", "message to")
     for run in task_result["agents_executed"]:
-        candidate_text = sanitize_text(str(run.get("output", "")))
+        candidate_text = sanitize_text(str(run.get("output", "")), mode=pii_mode)
         lowered = candidate_text.lower()
         if not any(keyword in lowered for keyword in draft_keywords):
             continue
@@ -311,7 +313,7 @@ def _stage_draft_communications(task_result: dict[str, Any], task: dict[str, Any
                 "task_id": task_result["task_id"],
                 "channel": channel,
                 "recipient": "Operator-reviewed recipient",
-                "subject": sanitize_text(task_result["task_title"]),
+                "subject": sanitize_text(task_result["task_title"], mode=pii_mode),
                 "body": f"[HUMAN APPROVAL REQUIRED]\n{candidate_text}",
                 "approval_status": "pending",
                 "flag": "[HUMAN APPROVAL REQUIRED]",

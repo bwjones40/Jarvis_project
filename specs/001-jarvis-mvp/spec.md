@@ -109,7 +109,7 @@ A task orchestration system that:
 
 ### Safety & Compliance
 
-- **FR-17**: The system never stores or processes personally identifiable information (names, emails, customer data)
+- **FR-17**: The system applies the configured `pii.mode`: `strict` redacts names and emails and stops matching tasks; `standard` redacts emails while allowing technical metadata identifiers; `off` disables detection/redaction only for explicitly approved local runs.
 - **FR-18**: Any output that includes a message intended for another person is written as a draft flagged `[HUMAN APPROVAL REQUIRED]` and never sent automatically
 - **FR-19**: Every task run is logged with: task ID, agents used, models used, token counts, and timestamp
 - **FR-20**: All system access to external services is read-only during the MVP
@@ -132,7 +132,7 @@ A task orchestration system that:
 | GCP discovery accuracy | Agent correctly identifies relevant BigQuery dataset/table for a known data request, confirmed by operator |
 | Knowledge accumulation | After 30 days, at least 10 evergreen knowledge notes exist and are referenced by subsequent task runs |
 | Cost visibility | Operator can determine the estimated cost of any completed task run from its task file within 60 seconds |
-| PII-free operation | Zero instances of PII appearing in vault files or task logs over the MVP period |
+| PII handling | Output matches the configured `pii.mode`; email addresses are redacted in `strict` and `standard`, names are redacted in `strict`, and `off` is documented as an explicitly approved local-only mode |
 
 ---
 
@@ -151,7 +151,7 @@ A task orchestration system that:
 
 | Constraint | Impact |
 |------------|--------|
-| No PII handling | Agent prompts must include an explicit hard stop on storing or processing personal data |
+| Configurable PII handling | `pii.mode` controls runtime behavior. `strict` redacts names and emails and stops tasks containing either. `standard` redacts emails while allowing technical metadata identifiers such as dataset/table labels. `off` disables detection/redaction and is only allowed for explicitly approved local runs. |
 | Human approval for external sends | All draft communications must be written to vault; no auto-send capability |
 | GCP service account not yet provisioned | GCP Discovery Agent is daytime-only for MVP; overnight capability is deferred |
 | Enterprise-approved services only | System may only use: Claude Enterprise API, GitHub, Power Automate, SharePoint |

@@ -5,7 +5,7 @@ from __future__ import annotations
 from time import perf_counter
 from typing import Any
 
-from orchestrator.utils.pii_guard import sanitize_text
+from orchestrator.utils.pii_guard import get_pii_mode, sanitize_text
 from orchestrator.utils.token_logger import log_agent_run
 from orchestrator.utils.vault_reader import search_notes
 
@@ -19,11 +19,12 @@ def run_research(
     task = task_result["task"]
     notes = search_notes(task["request"], vault_root, max_results=settings.get("research", {}).get("max_context_notes", 3))
     research_settings = settings.get("research", {})
+    pii_mode = get_pii_mode(settings)
     threshold = research_settings.get("cache_hit_threshold", 0.8)
     max_tokens_per_note = int(research_settings.get("max_tokens_per_note", 2000))
 
     if notes and notes[0]["score"] >= threshold:
-        summary = _cap_note_content(sanitize_text(notes[0]["content"]), max_tokens_per_note)
+        summary = _cap_note_content(sanitize_text(notes[0]["content"], mode=pii_mode), max_tokens_per_note)
         usage = type("Usage", (), {"input_tokens": 0, "output_tokens": 0})()
         output = {
             "context_summary": summary,
@@ -31,7 +32,7 @@ def run_research(
             "cache_hit": True,
         }
     else:
-        summary_lines = [f"- {sanitize_text(note['title'] or note['path'])}" for note in notes] or ["- No matching vault notes found."]
+        summary_lines = [f"- {sanitize_text(note['title'] or note['path'], mode=pii_mode)}" for note in notes] or ["- No matching vault notes found."]
         usage = type("Usage", (), {"input_tokens": 0, "output_tokens": 0})()
         output = {
             "context_summary": "Relevant vault context:\n" + "\n".join(summary_lines),

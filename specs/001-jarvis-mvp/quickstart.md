@@ -177,6 +177,8 @@ Before running any scenario, confirm:
 
 **What this validates**: FR-17, Success Criterion 7
 
+Run this scenario with `config/settings.yaml` set to `pii.mode: strict`.
+
 ### Steps
 
 1. Assign a task that includes a real person's name and email in the request:

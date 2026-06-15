@@ -21,6 +21,7 @@
 | Config | `config/settings.yaml` — model routing, agent settings |
 | Secrets | GitHub Actions secrets: `ANTHROPIC_API_KEY`, `POWER_AUTOMATE_WEBHOOK_URL` |
 | GCP access | Operator `gcloud auth` (daytime only); service account deferred |
+| PII handling | `config/settings.yaml` `pii.mode`: `strict`, `standard`, or `off` |
 
 **Open item**: SharePoint site URL and document library path must be confirmed by operator before Power Automate flow can be finalized. Does not block Phase 1 or Phase 2 implementation.
 
@@ -48,7 +49,7 @@ No `.specify/memory/constitution.md` exists for this project. Governance constra
 
 | Constraint | Gate Status | Mitigation |
 |------------|-------------|------------|
-| No PII handling | MUST enforce | Hard stop in every agent system prompt: "Never store, repeat, or process names, email addresses, or customer data." |
+| Configurable PII handling | MUST enforce selected mode | `strict` redacts names and emails and stops matching tasks; `standard` redacts emails while allowing technical metadata identifiers; `off` is reserved for explicitly approved local runs. |
 | Human approval for external sends | MUST enforce | DraftCommunication entity is write-only to vault; no send capability in codebase |
 | Read-only GCP access | MUST enforce | GCP agent uses credentials with `bigquery.dataViewer` + `bigquery.jobUser` roles only; no write roles requested |
 | Enterprise-approved services only | MUST enforce | Dependency list: `anthropic`, `google-cloud-bigquery`, `requests`, `pyyaml`. No unapproved SaaS SDKs. |
@@ -90,7 +91,7 @@ All gates pass. No constraint violations in the planned design.
    - Return a `Task` dict or raise `InboxParseError` with human-readable message
    - Write parse errors to digest and exit gracefully (no stack traces in vault)
 2. Implement `agents/orchestrator.py`:
-   - System prompt: role definition, PII hard stop, routing rules
+   - System prompt: role definition, configured `pii.mode` behavior, routing rules
    - Input: Task dict + top-3 knowledge notes from vault
    - Output: TaskResult skeleton with `agents_executed[0]` (orchestrator's own run) populated
    - Routing logic: determine which agents to invoke based on `agents_needed` field
@@ -113,7 +114,7 @@ All gates pass. No constraint violations in the planned design.
 
 **Tasks**:
 1. Implement `agents/research.py`:
-   - System prompt: knowledge retrieval role, PII hard stop
+   - System prompt: knowledge retrieval role, configured `pii.mode` behavior
    - Input: Task description + vault search results
    - First checks vault via `vault_reader.py` before calling API
    - If vault hit confidence > 0.8: return vault content directly (zero API tokens)
@@ -131,7 +132,7 @@ All gates pass. No constraint violations in the planned design.
 
 **Tasks**:
 1. Implement `agents/obsidian_writer.py`:
-   - System prompt: vault writing role, evergreen rules, PII hard stop
+   - System prompt: vault writing role, evergreen rules, configured `pii.mode` behavior
    - Input: Complete TaskResult dict + current content of notes to be updated
    - Outputs (all as strings, not file writes): task record markdown, digest update, knowledge note diffs, lesson file append
    - Enforce evergreen rule: agent checks if note exists before creating; updates in-place if so
@@ -151,7 +152,7 @@ All gates pass. No constraint violations in the planned design.
 
 **Tasks**:
 1. Implement `agents/gcp_discovery.py`:
-   - System prompt: data discovery role, plain-English output requirement, PII hard stop, read-only constraint statement
+   - System prompt: data discovery role, plain-English output requirement, configured `pii.mode` behavior, read-only constraint statement
    - Input: Vague data request string
    - Tool use: call `bq ls --project={project} --format=json` and `bq show --schema {dataset}.{table}` via subprocess
    - Output: Plain-language summary with dataset names, table names, and high-level descriptions
@@ -189,7 +190,7 @@ All gates pass. No constraint violations in the planned design.
 | Power Automate throttling on burst writes | Low | Digest delayed | Retry logic with backoff in `power_automate.py` |
 | Claude API rate limit on overnight run | Low | Task fails silently | Retry logic + error written to digest |
 | Vault note conflicts (concurrent writes) | Very low | Knowledge corruption | Obsidian Agent is the sole writer; GitHub Actions is single-concurrent by default |
-| PII leak in task output | Low | Compliance violation | Hard stop in every system prompt + PII guard validation (Scenario 6) |
+| PII policy mismatch in task output | Medium | Compliance violation | Validate the selected `pii.mode`; use `strict` for sensitive work and Scenario 6 |
 
 ---
 

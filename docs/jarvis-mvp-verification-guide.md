@@ -1,3 +1,4 @@
+
 # Jarvis MVP Verification Guide
 
 This guide walks through the MVP verification process step by step so each section can be marked complete with evidence.
@@ -14,7 +15,7 @@ Confirm that:
 2. Jarvis can parse and process inbox tasks.
 3. Power Automate can write vault files successfully.
 4. Draft communication safety rules are enforced.
-5. PII handling rules are enforced.
+5. PII handling rules are enforced according to the configured `pii.mode`.
 6. The nightly digest path works.
 7. Phase 4-6 outputs are regression-safe: vault payload batching, lesson appends, daytime GCP discovery, context pruning, and token/cost reporting.
 
@@ -264,6 +265,8 @@ Record evidence:
 ## Section 5: Validate PII Guard
 
 This is a compliance check and must pass before production use.
+
+Set `config/settings.yaml` to `pii.mode: strict` before running this section.
 
 ### Step 5.1
 

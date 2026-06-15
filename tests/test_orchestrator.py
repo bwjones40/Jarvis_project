@@ -229,6 +229,40 @@ class MainAndTokenLoggerTests(unittest.TestCase):
         self.assertNotIn("John Smith", result["task"]["request"])
         self.assertNotIn("jsmith@example.com", result["task"]["request"])
 
+    def test_orchestrator_standard_pii_mode_allows_names_but_blocks_emails(self) -> None:
+        task = {
+            "title": "Metadata task",
+            "priority": "medium",
+            "mode": "overnight",
+            "agents_needed": ["orchestrator", "obsidian"],
+            "due": "next run",
+            "request": "Summarize metadata for John Smith.",
+            "context": "",
+            "copilot_handoff": "",
+        }
+
+        result = run_orchestrator(task, vault_notes=[], settings={"pii": {"mode": "standard"}})
+
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["task"]["request"], "Summarize metadata for John Smith.")
+
+    def test_orchestrator_standard_pii_mode_still_blocks_emails(self) -> None:
+        task = {
+            "title": "Metadata task",
+            "priority": "medium",
+            "mode": "overnight",
+            "agents_needed": ["orchestrator", "obsidian"],
+            "due": "next run",
+            "request": "Summarize metadata for jsmith@example.com.",
+            "context": "",
+            "copilot_handoff": "",
+        }
+
+        result = run_orchestrator(task, vault_notes=[], settings={"pii": {"mode": "standard"}})
+
+        self.assertEqual(result["status"], "needs_clarification")
+        self.assertEqual(result["task"]["request"], "Input withheld because it contained PII.")
+
     def test_research_caps_cache_hit_context_to_configured_token_budget(self) -> None:
         note_dir = self.repo_root / "jarvis" / "knowledge"
         note_dir.mkdir(parents=True, exist_ok=True)

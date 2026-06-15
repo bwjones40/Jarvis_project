@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from time import perf_counter
 from typing import Any
 
-from orchestrator.utils.pii_guard import contains_pii, sanitize_text
+from orchestrator.utils.pii_guard import contains_pii, get_pii_mode, sanitize_text
 from orchestrator.utils.token_logger import log_agent_run
 
 
@@ -19,6 +20,7 @@ def run_gcp_discovery(task_result: dict[str, Any], settings: dict[str, Any]) -> 
     start = perf_counter()
     task = task_result.get("task", {})
     mode = task.get("mode", task_result.get("mode", "overnight"))
+    pii_mode = get_pii_mode(settings)
     errors: list[str] = []
 
     if mode != "daytime":
@@ -31,7 +33,7 @@ def run_gcp_discovery(task_result: dict[str, Any], settings: dict[str, Any]) -> 
         return _append_run(task_result, settings, start, output, errors)
 
     request = str(task.get("request", ""))
-    if contains_pii(request):
+    if contains_pii(request, mode=pii_mode):
         output = {
             "datasets_found": [],
             "tables": [],
@@ -55,7 +57,7 @@ def run_gcp_discovery(task_result: dict[str, Any], settings: dict[str, Any]) -> 
     try:
         datasets = _list_datasets(project)
         table_summaries = _list_table_summaries(project, datasets)
-        summary = _plain_english_summary(project, datasets, table_summaries)
+        summary = _plain_english_summary(project, datasets, table_summaries, pii_mode)
         output = {
             "datasets_found": datasets,
             "tables": table_summaries,
@@ -64,7 +66,7 @@ def run_gcp_discovery(task_result: dict[str, Any], settings: dict[str, Any]) -> 
         if task_result.get("status") == "completed":
             task_result["output_summary"] = summary
     except (OSError, subprocess.SubprocessError, ValueError, json.JSONDecodeError) as exc:
-        safe_error = sanitize_text(str(exc))
+        safe_error = sanitize_text(str(exc), mode=pii_mode)
         output = {
             "datasets_found": [],
             "tables": [],
@@ -77,7 +79,7 @@ def run_gcp_discovery(task_result: dict[str, Any], settings: dict[str, Any]) -> 
 
 
 def _list_datasets(project: str) -> list[str]:
-    response = _run_bq(["bq", "ls", f"--project={project}", "--format=json"])
+    response = _run_bq(["bq", "ls", f"--project_id={project}", "--format=json"])
     data = json.loads(response)
     datasets: list[str] = []
     for item in data:
@@ -92,30 +94,46 @@ def _list_table_summaries(project: str, datasets: list[str]) -> list[dict[str, A
     summaries: list[dict[str, Any]] = []
     for dataset in datasets:
         table_response = _run_bq(["bq", "ls", "--format=json", f"{project}:{dataset}"])
-        tables = json.loads(table_response)
+        try:
+            tables = json.loads(table_response)
+        except json.JSONDecodeError:
+            tables = []
         for table in tables[:10]:
             table_id = str(table.get("tableReference", {}).get("tableId", "")).strip()
             if not table_id:
                 continue
-            _run_bq(["bq", "show", "--schema", "--format=json", f"{project}:{dataset}.{table_id}"])
+            description = "Schema was reachable with read-only metadata access."
+            try:
+                _run_bq(["bq", "show", "--schema", "--format=json", f"{project}:{dataset}.{table_id}"])
+            except subprocess.SubprocessError:
+                description = "Table was visible; schema metadata was not available."
             summaries.append(
                 {
                     "dataset": dataset,
                     "table": table_id,
-                    "description": "Schema was reachable with read-only metadata access.",
+                    "description": description,
                 }
             )
     return summaries
 
 
 def _run_bq(command: list[str]) -> str:
+    command = [_resolve_bq_executable(), *command[1:]]
     completed = subprocess.run(command, capture_output=True, text=True, check=False)
     if completed.returncode != 0:
         raise subprocess.SubprocessError(completed.stderr.strip() or f"Command failed: {' '.join(command)}")
     return completed.stdout
 
 
-def _plain_english_summary(project: str, datasets: list[str], tables: list[dict[str, Any]]) -> str:
+def _resolve_bq_executable() -> str:
+    for candidate in ("bq", "bq.cmd", "bq.exe", "bq.bat"):
+        resolved = shutil.which(candidate)
+        if resolved:
+            return resolved
+    return "bq"
+
+
+def _plain_english_summary(project: str, datasets: list[str], tables: list[dict[str, Any]], pii_mode: str = "strict") -> str:
     if not datasets:
         return f"No BigQuery datasets were visible in project {project}."
 
@@ -128,7 +146,7 @@ def _plain_english_summary(project: str, datasets: list[str], tables: list[dict[
         table_names = ", ".join(item["table"] for item in dataset_tables[:5]) or "no tables visible"
         lines.append(f"- {dataset}: {len(dataset_tables)} table(s) visible. Examples: {table_names}.")
     lines.append("No data was modified; discovery used read-only metadata commands.")
-    return sanitize_text("\n".join(lines))
+    return sanitize_text("\n".join(lines), mode=pii_mode)
 
 
 def _append_run(

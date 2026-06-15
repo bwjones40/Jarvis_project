@@ -218,6 +218,44 @@ class ObsidianWriterTests(unittest.TestCase):
         self.assertIn("## Weekly Cost Rollup", digest["content"])
         self.assertIn("Last 7 days estimated cost", digest["content"])
 
+    def test_digest_honors_off_pii_mode(self) -> None:
+        task_result = {
+            "task_id": "task-001-digest-pii-off",
+            "task_title": "Review John Smith datasets",
+            "run_timestamp": "2026-06-13T00:00:00Z",
+            "mode": "daytime",
+            "status": "completed",
+            "agents_executed": [
+                {
+                    "agent_name": "orchestrator",
+                    "model": "claude-sonnet-4-6",
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "duration_seconds": 0.1,
+                    "output": {},
+                    "errors": [],
+                }
+            ],
+            "output_summary": "Completed.",
+            "draft_communications": [],
+            "clarifications_needed": [],
+            "knowledge_updates": [],
+        }
+
+        outputs = build_vault_outputs(
+            task_result=task_result,
+            task={"request": "Review John Smith datasets."},
+            settings={
+                "pii": {"mode": "off"},
+                "models": {"subagent": "claude-haiku-4-5"},
+                "vault": {"digests_dir": "jarvis/digests", "tasks_dir": "jarvis/tasks", "lessons_dir": "jarvis/agents"},
+            },
+        )
+
+        digest = next(item for item in outputs if item["vault_path"].startswith("jarvis/digests/"))
+        self.assertIn("Review John Smith datasets", digest["content"])
+        self.assertNotIn("[REDACTED_NAME]", digest["content"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,262 +2,309 @@
 
 ## 1. Project Overview
 
-[Confirmed] Jarvis is intended to be an internal AI orchestration system that accepts operator tasks from `jarvis/inbox.md`, runs an overnight/sequential agent pipeline, and writes task results plus a daily digest into an Obsidian vault through Power Automate, SharePoint, and OneDrive sync. Evidence: `specs/001-jarvis-mvp/spec.md`, `AGENTS.md`, `jarvis-mvp-plan.md`.
+[Confirmed] Jarvis is an internal Python workflow for operator-assigned task execution. The operator assigns work through `jarvis/inbox.md`; Jarvis parses the task, runs a sequential agent pipeline, renders markdown outputs, and optionally posts those outputs to a Power Automate webhook for SharePoint/Obsidian delivery. Evidence: `orchestrator/main.py`, `.github/workflows/jarvis.yml`, `specs/001-jarvis-mvp/spec.md`.
 
-[Confirmed] The repository currently implements a small Python workflow, not a fully autonomous Claude-backed agent system. The implemented runtime is deterministic Python code in `orchestrator/main.py`, `orchestrator/agents/*.py`, and `orchestrator/utils/*.py`. Evidence: `orchestrator/main.py`, `orchestrator/agents/orchestrator.py`, `orchestrator/agents/research.py`, `orchestrator/agents/obsidian_writer.py`.
+[Confirmed] The current implementation is mostly deterministic Python. It records agent-like runs, but it does not currently call the Anthropic SDK or load prompt files at runtime. Evidence: `requirements.txt`, `prompts/*.md`, `orchestrator/agents/*.py`.
 
-[Inferred] The current practical MVP is closer to a workflow skeleton and validation harness than a production AI system. It parses tasks, builds structured task records, posts markdown payloads to Power Automate, stages simple draft communications, and protects against some PII patterns. It does not yet call the Anthropic SDK for task reasoning.
+[Confirmed] Phase 4-6 code now exists: Obsidian output batching/lessons, daytime GCP discovery via local `bq`, token/cost tables, weekly digest rollups, context pruning, and configurable PII handling. Evidence: `orchestrator/agents/obsidian_writer.py`, `orchestrator/agents/gcp_discovery.py`, `orchestrator/utils/token_logger.py`, `config/settings.yaml`, `tests/test_gcp_discovery.py`, `tests/test_pii_guard.py`.
+
+[Inferred] The practical MVP is an integration and safety scaffold. It validates the workflow shape before introducing real Claude reasoning, richer semantic search, or unattended enterprise data access.
 
 ## 2. Repository Forensics Summary
 
-[Confirmed] The repo is spec-first. The most complete product definition lives under `specs/001-jarvis-mvp/`, especially `spec.md`, `plan.md`, `data-model.md`, and `contracts/`. Source code is smaller and implements only a subset of the intended plan.
+[Confirmed] The repo is spec-first. The most complete intended-state documentation is in `specs/001-jarvis-mvp/`, while current code implements a subset plus some pragmatic runtime fixes discovered during validation. Evidence: `specs/001-jarvis-mvp/spec.md`, `specs/001-jarvis-mvp/plan.md`, `orchestrator/`.
 
-[Confirmed] CI/CD is through `.github/workflows/jarvis.yml`. It runs on `jarvis/inbox.md` pushes, a cron schedule, and manual dispatch. It installs Python 3.12, checks that `ANTHROPIC_API_KEY` exists and resolves `api.anthropic.com`, runs `python orchestrator/main.py`, commits a cleared inbox when changed, and sends a Power Automate smoke-test payload.
+[Confirmed] The live automation surface is `.github/workflows/jarvis.yml`. It runs on pushes to `jarvis/inbox.md`, a weekday 23:00 UTC cron, and manual dispatch. It installs Python 3.12, checks Anthropic secret presence/DNS resolution, runs `python orchestrator/main.py`, commits the cleared inbox when changed, and sends a Power Automate smoke-test file when the webhook secret exists.
 
-[Confirmed] The current workflow cron is temporarily set to `*/5 * * * *`, not the intended nightly `0 23 * * 1-5`. Evidence: `.github/workflows/jarvis.yml`. This is a temporary validation state and should be restored after Section 6 validation.
+[Confirmed] Unit tests are local-only at present. The GitHub Actions workflow does not run `python -m unittest discover -s tests`. Evidence: `.github/workflows/jarvis.yml`, `tests/`.
 
-[Contradictory Evidence] `specs/001-jarvis-mvp/tasks.md` lists many tasks as unchecked even when code exists. Treat that file as a planned task inventory, not a current progress tracker. Evidence: `tests/test_inbox_parser.py`, `orchestrator/utils/inbox_parser.py`, `tests/test_obsidian_writer.py`.
+[Contradictory Evidence] `specs/001-jarvis-mvp/tasks.md` still lists many tasks as unchecked or describes Claude-backed implementations even when deterministic implementations and tests exist. Treat it as a historical task list, not current status. Evidence: `specs/001-jarvis-mvp/tasks.md`, `tests/*.py`, `orchestrator/*.py`.
+
+[Confirmed] Additional future-phase specs exist under `specs/002-jarvis-phase2/` and `specs/003-phase2-agent-ecosystem/`. They describe validation, CI, vault maintenance, PR review, and prompt-library work that is not present in source code. Evidence: `specs/002-jarvis-phase2/`, `specs/003-phase2-agent-ecosystem/`.
 
 ## 3. Repository Map
 
 | Area | Purpose | Maturity | Confidence | Evidence |
 |---|---|---:|---:|---|
-| `orchestrator/main.py` | CLI and workflow entry point. Loads settings, parses inbox, routes through orchestrator/research/obsidian, posts outputs, clears inbox after successful post. | Partial | High | `orchestrator/main.py` |
-| `orchestrator/agents/orchestrator.py` | Builds a `TaskResult` skeleton, routes requested agents, flags clarification/PII. | Partial | High | `orchestrator/agents/orchestrator.py` |
-| `orchestrator/agents/research.py` | Performs local vault keyword search and records context summary. | Partial | High | `orchestrator/agents/research.py` |
-| `orchestrator/agents/obsidian_writer.py` | Builds task markdown, digest markdown, lesson payloads, and simple draft communications. | Partial | High | `orchestrator/agents/obsidian_writer.py` |
-| `orchestrator/utils/inbox_parser.py` | Parses the markdown inbox contract and treats the cleared template as no task. | Implemented for MVP | High | `tests/test_inbox_parser.py` |
-| `orchestrator/utils/power_automate.py` | Sends webhook payloads with retries and logs failures to `jarvis/run-errors.log`. | Implemented but minimal | High | `tests/test_power_automate.py` |
-| `orchestrator/utils/vault_reader.py` | Reads and searches local markdown notes by filename, H1, and content keyword match. | Minimal | High | `orchestrator/utils/vault_reader.py` |
-| `orchestrator/utils/pii_guard.py` | Regex-based email/name redaction with a small allowlist. | Fragile partial | High | `tests/test_orchestrator.py`, `tests/test_obsidian_writer.py` |
-| `config/settings.yaml` | Model names, timeouts, vault paths, Power Automate placeholders, research settings. | Partial | High | `config/settings.yaml` |
-| `.github/workflows/jarvis.yml` | Primary automation and deployment runner. | Working but validation-mode cron | High | `.github/workflows/jarvis.yml` |
-| `prompts/*.md` | Intended system prompts for future Anthropic calls. | Aspirational/stubbed | High | `prompts/orchestrator.md`, `prompts/research.md`, `prompts/obsidian_writer.md` |
-| `specs/001-jarvis-mvp/` | Product spec, implementation plan, contracts, quickstart. | Strong intended-state docs, partially stale status | High | `specs/001-jarvis-mvp/*.md` |
-| `tests/` | Unit tests for parser, main/dry-run, routing, PII, draft staging, PA retry. | Useful but not complete | High | `tests/*.py` |
-| `jarvis/inbox.md` | Operator-editable task input. Also template/no-task sentinel. | Implemented | High | `jarvis/inbox.md` |
-| `prompts/route1_refresh_error_diagnosis.md` | Unrelated or legacy prompt artifact. | Suspicious/possibly abandoned | Medium | `rg --files` |
+| `orchestrator/main.py` | CLI entry point. Loads settings, parses inbox or direct `--task`, runs agents, posts vault payloads, clears inbox after successful post. | Implemented MVP | High | `orchestrator/main.py` |
+| `orchestrator/agents/orchestrator.py` | Builds `TaskResult`, applies PII mode, handles clarification checks, creates routing. | Implemented but deterministic | High | `orchestrator/agents/orchestrator.py` |
+| `orchestrator/agents/research.py` | Searches local vault notes, logs cache-hit status, caps note content by configured word/token-like limit. | Partial | High | `orchestrator/agents/research.py` |
+| `orchestrator/agents/gcp_discovery.py` | Daytime-only BigQuery metadata discovery through local `bq` CLI. Lists datasets/tables and summarizes read-only findings. | Implemented with environmental dependencies | High | `orchestrator/agents/gcp_discovery.py` |
+| `orchestrator/agents/obsidian_writer.py` | Builds task records, daily digest, weekly cost rollup, lesson files, knowledge-note updates, and draft communication sections. | Implemented MVP | High | `orchestrator/agents/obsidian_writer.py` |
+| `orchestrator/utils/inbox_parser.py` | Parses the markdown inbox contract and treats cleared template as no-task state. | Implemented MVP | High | `tests/test_inbox_parser.py` |
+| `orchestrator/utils/power_automate.py` | Posts a batch of vault file payloads; retries 429/5xx and network errors; writes `jarvis/run-errors.log` on failure. | Implemented, external dependency | High | `tests/test_power_automate.py` |
+| `orchestrator/utils/pii_guard.py` | Regex PII helper with `strict`, `standard`, and `off` modes. | Partial and compliance-sensitive | High | `tests/test_pii_guard.py` |
+| `orchestrator/utils/token_logger.py` | AgentRun formatting and estimated Claude cost calculation. | Implemented for zero-token deterministic runs | High | `tests/test_orchestrator.py`, `tests/test_obsidian_writer.py` |
+| `orchestrator/utils/vault_reader.py` | Local markdown note existence, read, and keyword search. | Minimal | Medium | `orchestrator/utils/vault_reader.py` |
+| `config/settings.yaml` | Model labels, timeouts, vault dirs, research limits, `pii.mode`, GCP project. | Active but not fully enforced | High | `config/settings.yaml` |
+| `.github/workflows/jarvis.yml` | GitHub-hosted runtime, schedule, bot commit, PA smoke test. | Active | High | `.github/workflows/jarvis.yml` |
+| `prompts/*.md` | Intended system prompts for future LLM-backed agents. | Present but unused at runtime | High | `prompts/orchestrator.md`, `prompts/research.md`, `prompts/gcp_discovery.md`, `prompts/obsidian_writer.md` |
+| `tests/` | Regression tests for parser, orchestrator, PII, GCP, Obsidian, Power Automate. | Useful but not exhaustive | High | `tests/*.py` |
+| `specs/001-jarvis-mvp/Verifcation-evidence/` | Screenshot evidence for validation. Folder name has a typo. | Human evidence, not automated | Medium | `specs/001-jarvis-mvp/Verifcation-evidence/` |
+| `specs/002-*`, `specs/003-*` | Future phase planning artifacts. | Planned, not implemented | Medium | `specs/002-jarvis-phase2/`, `specs/003-phase2-agent-ecosystem/` |
+| `prompts/route1_refresh_error_diagnosis.md` | Prompt artifact not referenced by current runtime or tests. | Suspicious/possibly legacy | Medium | `prompts/route1_refresh_error_diagnosis.md` |
 
 ## 4. Implementation Status Assessment
 
 ### Clearly Implemented
 
-- [Confirmed] Inbox parsing for the documented markdown format, including priority/mode validation and first-task-only behavior. Evidence: `orchestrator/utils/inbox_parser.py`, `tests/test_inbox_parser.py`.
-- [Confirmed] Cleared-template detection so cron/manual no-task runs produce a no-task digest rather than a fake task. Evidence: `orchestrator/utils/inbox_parser.py`, `tests/test_inbox_parser.py`, `tests/test_orchestrator.py`.
-- [Confirmed] GitHub Actions workflow for push/manual/schedule execution and Power Automate posting. Evidence: `.github/workflows/jarvis.yml`.
-- [Confirmed] Power Automate webhook client with retry behavior on 429/5xx and failure log output. Evidence: `orchestrator/utils/power_automate.py`, `tests/test_power_automate.py`.
-- [Confirmed] Task record and daily digest markdown generation. Evidence: `orchestrator/agents/obsidian_writer.py`, `tests/test_obsidian_writer.py`.
-- [Confirmed] Draft communication staging for simple Teams/email draft requests, with `[HUMAN APPROVAL REQUIRED]`. Evidence: `orchestrator/agents/obsidian_writer.py`, Section 4 validation output in user-provided transcript.
-- [Confirmed] Basic PII guard for email and simple two-word name patterns. Evidence: `orchestrator/utils/pii_guard.py`, Section 5 validation transcript, `tests/test_obsidian_writer.py`.
+- [Confirmed] Markdown inbox parsing with validation and no-task template detection. Evidence: `orchestrator/utils/inbox_parser.py`, `tests/test_inbox_parser.py`.
+- [Confirmed] Sequential pipeline wiring for orchestrator, optional research, optional GCP, and Obsidian writer. Evidence: `orchestrator/main.py`.
+- [Confirmed] Direct daytime task mode through `python orchestrator/main.py --task "..."`. Evidence: `orchestrator/main.py`, `tests/test_gcp_discovery.py`.
+- [Confirmed] Daytime GCP discovery through read-only metadata commands: `bq ls`, `bq show --schema`. Evidence: `orchestrator/agents/gcp_discovery.py`.
+- [Confirmed] Overnight GCP skip guard with message `GCP agent skipped: overnight mode, service account not provisioned`. Evidence: `orchestrator/agents/gcp_discovery.py`, `tests/test_gcp_discovery.py`.
+- [Confirmed] Power Automate webhook retries and failure log creation. Evidence: `orchestrator/utils/power_automate.py`, `tests/test_power_automate.py`.
+- [Confirmed] Task markdown, digest markdown, lesson file payloads, draft communication staging, and `[HUMAN APPROVAL REQUIRED]` flag. Evidence: `orchestrator/agents/obsidian_writer.py`, `tests/test_obsidian_writer.py`.
+- [Confirmed] Token usage table and estimated cost display in task output, plus weekly digest rollup based on task files. Evidence: `orchestrator/agents/obsidian_writer.py`.
+- [Confirmed] Configurable PII modes: `strict`, `standard`, `off`. Evidence: `orchestrator/utils/pii_guard.py`, `config/settings.yaml`, `tests/test_pii_guard.py`.
+- [Confirmed] GCP fixes for Windows `bq.cmd`, `--project_id`, schema lookup failures, and empty/non-JSON table-list responses are covered by tests. Evidence: `tests/test_gcp_discovery.py`.
 
 ### Partially Implemented
 
-- [Confirmed] AgentRun audit records exist, but token usage is currently zero because no real Anthropic calls are made. Evidence: `orchestrator/agents/*.py`, `orchestrator/utils/token_logger.py`.
-- [Confirmed] Research cache behavior is local keyword search, not an LLM summarization or real semantic cache. Evidence: `orchestrator/agents/research.py`, `orchestrator/utils/vault_reader.py`.
-- [Confirmed] Lesson file payloads are generated, but true append/update semantics depend on Power Automate flow behavior that is outside the repo. Evidence: `orchestrator/agents/obsidian_writer.py`, `specs/001-jarvis-mvp/contracts/webhook-payload.md`.
-- [Confirmed] Power Automate output path works in operator validation, but the actual flow is not version-controlled. Artifact Evidence: user validation transcript showing SharePoint `CreateFile` status 200.
-- [Confirmed] Cost calculation exists, but weekly cost rollup and nonzero token capture are not implemented. Evidence: `orchestrator/utils/token_logger.py`, `specs/001-jarvis-mvp/tasks.md`.
+- [Confirmed] Anthropic connectivity is checked in GitHub Actions, but no Anthropic request is made by agents. Evidence: `.github/workflows/jarvis.yml`, `orchestrator/agents/*.py`.
+- [Confirmed] Prompt files describe agent roles, but runtime code does not load or execute them. Evidence: `prompts/*.md`, `orchestrator/agents/*.py`.
+- [Confirmed] Weekly cost rollup exists, but costs remain `$0.00` until real token usage is captured. Evidence: `orchestrator/utils/token_logger.py`, `orchestrator/agents/*.py`.
+- [Confirmed] GCP discovery is read-only by command choice, but it depends on the operator's local `bq`/`gcloud` auth and local PATH resolution. Evidence: `orchestrator/agents/gcp_discovery.py`, validation transcripts.
+- [Confirmed] Power Automate create/update behavior is specified but implemented outside the repository. Evidence: `specs/001-jarvis-mvp/contracts/webhook-payload.md`.
+- [Confirmed] PII mode `off` is implemented in code and unit tests; fresh end-to-end validation is still needed because one captured run contained `[REDACTED_NAME]` markers. Artifact Evidence: user-provided Scenario 4 output attachment.
 
 ### Stubbed / Placeholder
 
-- [Confirmed] Anthropic SDK is listed in `requirements.txt`, but source code does not instantiate an Anthropic client or call Claude. Evidence: `requirements.txt`, `rg` source inventory.
-- [Confirmed] Prompt files exist but are not loaded by the runtime. Evidence: `prompts/*.md`, `orchestrator/agents/*.py`.
-- [Confirmed] `config/settings.yaml` timeout values are not enforced in code. Evidence: `config/settings.yaml`, `orchestrator/main.py`.
-- [Confirmed] GCP discovery files named in plan do not exist in the source tree. Evidence: `rg --files`, `specs/001-jarvis-mvp/plan.md`.
+- [Confirmed] `config/settings.yaml` timeout values are not enforced by the Python runtime. Evidence: `config/settings.yaml`, `orchestrator/main.py`.
+- [Confirmed] `sharepoint_site_url` and `document_library` remain TODO/blank in config and are not consumed by Python. Evidence: `config/settings.yaml`.
+- [Confirmed] Model names are labels in AgentRun records, not actual model invocations. Evidence: `orchestrator/utils/token_logger.py`, `orchestrator/agents/*.py`.
 
 ### Likely Planned but Not Built
 
-- [Confirmed] `gcp_discovery.py`, `prompts/gcp_discovery.md`, `tests/test_gcp_discovery.py`, and daytime GCP mode are planned but absent. Evidence: `specs/001-jarvis-mvp/tasks.md`, `rg --files`.
-- [Confirmed] Weekly usage rollup, context pruning, and cache-hit digest metrics are planned but absent. Evidence: `specs/001-jarvis-mvp/tasks.md`.
-- [Confirmed] Create-or-update behavior for SharePoint files is specified but not enforced by repo code. Evidence: `specs/001-jarvis-mvp/contracts/webhook-payload.md`; Artifact Evidence: user noted duplicate output files and create-only behavior.
+- [Confirmed] Phase 2 agent ecosystem items such as validation agent, CI agent, vault maintenance, PR review, prompt library, and run logger are planned in `specs/003-phase2-agent-ecosystem/` but no corresponding source files exist in `orchestrator/agents/`. Evidence: `specs/003-phase2-agent-ecosystem/tasks.md`, `orchestrator/agents/`.
+- [Confirmed] Real Claude-backed reasoning, prompt loading, retry policy for LLM calls, and token capture remain planned but unbuilt. Evidence: `specs/001-jarvis-mvp/tasks.md`, `orchestrator/`.
 
 ### Cannot Determine
 
-- [Unverified] Whether the Power Automate flow currently performs create-or-update or create-only behavior. The repo only posts payloads; the flow itself is external.
-- [Unverified] Whether GitHub Actions secrets are configured correctly in the live repo beyond previous successful validation runs.
-- [Unverified] Whether OneDrive sync is reliable enough for unattended morning delivery.
+- [Unverified] Whether the live Power Automate flow uses create-or-update, create-only, or custom path logic.
+- [Unverified] Whether SharePoint/OneDrive sync is reliable for unattended morning delivery.
+- [Unverified] Whether `ANTHROPIC_API_KEY` is valid for actual Anthropic API calls beyond presence and DNS checks.
+- [Unverified] Whether `claude-sonnet-4-6` and `claude-haiku-4-5` are valid API model identifiers in the target Anthropic environment.
 
 ## 5. Likely Build / Run / Deploy Workflows
 
-### Local Install and Test
+### Local Setup and Regression Tests
 
-[Confirmed] Install dependencies:
+[Confirmed] Install Python dependencies:
 
 ```powershell
 python -m pip install -r requirements.txt
 ```
 
-[Confirmed] Run tests:
+[Confirmed] Run unit tests:
 
 ```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'
 python -m unittest discover -s tests
 ```
 
-[Confirmed] Dry-run parse behavior:
+[Confirmed] Current observed result after the PII-mode fix: `Ran 40 tests ... OK`. Artifact Evidence: local terminal run during documentation update.
+
+### Local Dry Run
+
+[Confirmed] Parse without webhook posting:
 
 ```powershell
 python orchestrator/main.py --dry-run
 ```
 
-Confidence: High. Evidence: `requirements.txt`, `tests/`, `orchestrator/main.py`.
+[Confirmed] If the inbox is empty or cleared to template, expected output is `No task in inbox`. Evidence: `orchestrator/main.py`, `tests/test_inbox_parser.py`.
 
-### Local Real Run
+### Local Daytime GCP Run
 
-[Inferred] A local real run requires `POWER_AUTOMATE_WEBHOOK_URL` in the environment. Without it, `orchestrator/main.py` prints a result but does not post files or clear `jarvis/inbox.md`.
+[Confirmed] Direct GCP discovery bypasses `jarvis/inbox.md`:
 
 ```powershell
-$env:POWER_AUTOMATE_WEBHOOK_URL = "<signed Power Automate trigger URL>"
+$env:POWER_AUTOMATE_WEBHOOK_URL=''
+python orchestrator/main.py --task "List all BigQuery datasets in the non-prod environment"
+```
+
+[Confirmed] Required local assumptions: `bq` or a Windows shim such as `bq.cmd` is discoverable by `shutil.which`, local auth can list metadata for `config.settings.gcp.project`, and the run is daytime mode. Evidence: `orchestrator/agents/gcp_discovery.py`.
+
+### Local Real Run With Power Automate
+
+[Confirmed] Posting requires `POWER_AUTOMATE_WEBHOOK_URL`:
+
+```powershell
+$env:POWER_AUTOMATE_WEBHOOK_URL = "<signed Power Automate HTTP trigger URL>"
 python orchestrator/main.py
 ```
 
-Confidence: High. Evidence: `_maybe_post_outputs()` in `orchestrator/main.py`.
+[Confirmed] Without the webhook URL, the result is printed but files are not posted and `jarvis/inbox.md` is not cleared. Evidence: `_maybe_post_outputs()` and clear-inbox branch in `orchestrator/main.py`.
 
-### GitHub Actions Run
+### GitHub Actions Runtime
 
-[Confirmed] A normal operator flow is: edit `jarvis/inbox.md`, commit, push to `main`, GitHub Actions runs, Python posts vault files to Power Automate, and the workflow commits the cleared inbox back to GitHub. Evidence: `.github/workflows/jarvis.yml`.
+[Confirmed] Expected operator flow:
 
-[Confirmed] The workflow can also be run manually through `workflow_dispatch`.
+1. Edit `jarvis/inbox.md`.
+2. Commit and push.
+3. GitHub Actions runs Jarvis.
+4. Python posts vault files to Power Automate.
+5. If posting succeeds, the workflow commits a cleared inbox with `[jarvis-skip]`.
+6. Power Automate writes files to SharePoint; OneDrive exposes them to Obsidian.
 
-[Confirmed] Scheduled runs currently fire every 5 minutes because the cron was temporarily changed for validation. Evidence: `.github/workflows/jarvis.yml`.
+Evidence: `.github/workflows/jarvis.yml`, `orchestrator/main.py`.
 
 ### Deployment
 
-[Inferred] There is no separate deployment artifact. GitHub Actions is the runtime environment. Power Automate and SharePoint are external runtime dependencies.
+[Inferred] There is no packaged deployment artifact. The deployed system is the GitHub Actions workflow plus an external Power Automate flow.
 
 ## 6. Configuration and Dependencies
 
-[Confirmed] Approved dependencies are `anthropic`, `google-cloud-bigquery`, `requests`, and `pyyaml`. Evidence: `requirements.txt`, `AGENTS.md`.
+[Confirmed] Dependencies: `anthropic`, `google-cloud-bigquery`, `requests`, `pyyaml`. Evidence: `requirements.txt`.
 
-[Confirmed] Required GitHub Actions secrets:
+[Confirmed] Runtime environment variables/secrets:
 
-- `ANTHROPIC_API_KEY`
-- `POWER_AUTOMATE_WEBHOOK_URL`
+- `POWER_AUTOMATE_WEBHOOK_URL`: required to post vault files and clear inbox after task runs.
+- `ANTHROPIC_API_KEY`: required by GitHub Actions connectivity check, but not used by current agent code.
 
-Evidence: `.github/workflows/jarvis.yml`, `specs/001-jarvis-mvp/plan.md`.
+[Confirmed] `config/settings.yaml` active fields:
 
-[Confirmed] `config/settings.yaml` defines model names, timeouts, vault dirs, and Power Automate placeholders. Some values are not used at runtime.
+- `models.orchestrator`, `models.subagent`: used as AgentRun labels.
+- `vault.root`, `vault.tasks_dir`, `vault.digests_dir`, `vault.lessons_dir`: used by main and Obsidian writer.
+- `research.max_context_notes`, `research.max_tokens_per_note`, `research.cache_hit_threshold`: used by vault search/research.
+- `pii.mode`: used by orchestrator, research, GCP, and Obsidian writer.
+- `gcp.project`: used by GCP discovery.
 
-[Unverified] The live Power Automate flow must split each `vault_path` into parent folder and file name, write `content`, and respond 200. The repo cannot validate this flow directly.
+[Confirmed] `config/settings.yaml` weak or inactive fields:
+
+- `timeouts.*`: configured but not enforced.
+- `power_automate.sharepoint_site_url`, `power_automate.document_library`: TODO placeholders, not used by Python.
+- `vault.knowledge_dir`: present, but current knowledge update behavior depends on `task_result.knowledge_updates`, not broad discovery.
 
 ## 7. Architecture Reconstruction
 
 ### Conclusion: Jarvis is a single-process sequential pipeline.
 
-Evidence: `orchestrator/main.py` calls `parse_inbox()`, `run_orchestrator()`, conditionally `run_research()`, then `build_vault_outputs()`.
+Evidence: `orchestrator/main.py` calls `parse_inbox()`, `search_notes()`, `run_orchestrator()`, optional `run_research()`, optional `run_gcp_discovery()`, and `build_vault_outputs()`.
 
 Confidence Level: High.
 
-Alternate Interpretations: The specs describe Claude agents, but the code currently implements deterministic local functions.
+Alternate Interpretations: Specs describe specialized AI agents, but current runtime uses deterministic functions with AgentRun logs.
 
-Risk if Misunderstood: Future agents may assume true AI reasoning exists and build on capabilities that are not present.
+Risk if Misunderstood: A future agent might assume Claude reasoning exists and skip implementing prompt loading, token capture, and API failure handling.
 
-Recommended Validation Step: Search for `anthropic` usage in source before planning LLM-dependent work.
+Recommended Validation Step: Search for Anthropic client construction before planning LLM-dependent features.
 
-### Conclusion: The durable output boundary is Power Automate, not the Git repo.
+### Conclusion: Power Automate is the durable output boundary.
 
-Evidence: `build_vault_outputs()` returns file payloads; `_maybe_post_outputs()` sends them to `POWER_AUTOMATE_WEBHOOK_URL`; `.gitignore` excludes generated vault dirs.
-
-Confidence Level: High.
-
-Alternate Interpretations: Some validation users expected files in GitHub, but current design sends them to SharePoint/Obsidian.
-
-Risk if Misunderstood: Debugging will look in the wrong storage location.
-
-Recommended Validation Step: Inspect SharePoint/Obsidian paths first when task/digest outputs are missing.
-
-### Conclusion: Power Automate is a critical unversioned system boundary.
-
-Evidence: `specs/001-jarvis-mvp/contracts/webhook-payload.md` specifies flow behavior, but no exported PA flow definition exists in repo.
+Evidence: `build_vault_outputs()` returns file payloads; `_maybe_post_outputs()` sends them to `POWER_AUTOMATE_WEBHOOK_URL`; `.gitignore` excludes generated vault output directories.
 
 Confidence Level: High.
 
-Alternate Interpretations: The flow could be considered operator infrastructure outside source control.
+Alternate Interpretations: Local files under `jarvis/tasks`, `jarvis/digests`, and `jarvis/agents` may appear during tests or validation, but intended generated output is system-managed.
 
-Risk if Misunderstood: Repo tests can pass while production output fails or duplicates.
+Risk if Misunderstood: Debugging may look in the Git repo when the true write failure is in Power Automate or SharePoint.
 
-Recommended Validation Step: Export or document the exact PA flow steps and expressions.
+Recommended Validation Step: Inspect Power Automate run body and SharePoint file output for missing vault files.
 
-### Conclusion: PII enforcement is code-level but heuristic.
+### Conclusion: GCP discovery is local-operator metadata discovery, not cloud-hosted service-account automation.
 
-Evidence: `pii_guard.py` uses regex for email and two-capitalized-word names, with a small allowlist.
+Evidence: `gcp_discovery.py` shells out to local `bq`; `plan.md` says service account is deferred; overnight mode skips GCP.
 
 Confidence Level: High.
 
-Alternate Interpretations: Prompt-level PII hard stops exist in prompt files, but prompts are not used at runtime.
+Alternate Interpretations: `google-cloud-bigquery` is installed, but current code does not use the Python BigQuery client.
 
-Risk if Misunderstood: False negatives are possible for non-two-word names, lowercase names, customer identifiers, and indirect PII.
+Risk if Misunderstood: Running in GitHub Actions or another machine without `bq`/auth will fail or degrade.
 
-Recommended Validation Step: Expand PII tests before adding real LLM calls.
+Recommended Validation Step: Run `where bq`, `bq ls --project_id=<project> --format=json`, then Scenario 4 locally.
 
-### Apparent Boundaries and Data Flow
+### Conclusion: PII behavior is configurable, but policy posture depends on mode.
 
-1. Operator edits `jarvis/inbox.md`.
-2. GitHub Actions triggers.
-3. Python parses inbox into a task dict.
-4. Deterministic "agents" append AgentRun records to a TaskResult dict.
-5. Obsidian writer renders markdown payloads.
-6. Power Automate writes payload files into SharePoint.
-7. OneDrive sync exposes files to Obsidian.
-8. GitHub Actions commits cleared inbox back to `main`.
+Evidence: `pii_guard.py` implements `strict`, `standard`, and `off`; `config/settings.yaml` currently sets `mode: off`.
+
+Confidence Level: High.
+
+Alternate Interpretations: Original project constraints said "No PII" absolutely; the updated implementation intentionally supports local-only `off` mode by user request.
+
+Risk if Misunderstood: A future production or GitHub Actions run could leak names/emails if `off` is committed or used outside approved local validation.
+
+Recommended Validation Step: Before sensitive runs, set `pii.mode: strict` and run Scenario 6.
+
+### Apparent System Boundaries
+
+- Input boundary: `jarvis/inbox.md` or CLI `--task`.
+- Runtime boundary: local Python process or GitHub Actions runner.
+- Output boundary: Power Automate webhook payload.
+- External data boundary: local `bq` CLI for metadata-only BigQuery discovery.
+- Human-approval boundary: draft communication is markdown only; no send APIs exist.
+
+### Coupling Hotspots
+
+- `orchestrator/main.py` owns routing order, webhook posting, direct task behavior, and inbox clearing.
+- `obsidian_writer.py` mutates `task_result` while rendering outputs.
+- `pii_guard.py` affects every agent and all vault text rendering.
+- Power Automate path handling is outside version control but critical to output correctness.
 
 ## 8. Assumptions
 
-- [Inferred] The operator uses `main` as the active branch. Evidence: workflow pushes to current checkout and user logs reference `main`.
-- [Inferred] `jarvis/` generated output dirs should not be tracked in Git. Evidence: `.gitignore`, current workflow output path.
-- [Inferred] The Power Automate flow should own create/update semantics. Evidence: contract file and user validation notes about duplicate files.
-- [Unverified] The SharePoint/OneDrive vault path remains stable.
+- [Inferred] `main` is the active GitHub branch for Jarvis operation. Evidence: workflow bot commit pattern and user validation logs.
+- [Confirmed] Generated vault outputs should stay out of Git. Evidence: `.gitignore`.
+- [Inferred] The operator is expected to run GCP discovery locally, not in GitHub Actions. Evidence: local `bq` subprocess dependency and daytime service-account deferral.
+- [Inferred] `pii.mode: off` is intended for explicitly approved local validation or non-sensitive metadata work, not normal production. Evidence: `config/settings.yaml` comments and `spec.md`.
 
 ## 9. Constraints
 
-- [Confirmed] No PII storage. Evidence: `AGENTS.md`, prompt files, `pii_guard.py`.
-- [Confirmed] No auto-send. Evidence: `AGENTS.md`, `obsidian_writer.py`; no email/Teams send API code found.
+- [Confirmed] No auto-send. There is no email or Teams API send path; drafts are markdown only. Evidence: `obsidian_writer.py`, `AGENTS.md`.
+- [Confirmed] Read-only GCP. Code uses list/show metadata commands and includes a read-only summary statement. Evidence: `gcp_discovery.py`.
 - [Confirmed] Approved dependencies only. Evidence: `requirements.txt`, `AGENTS.md`.
-- [Confirmed] No new database. Evidence: `data-model.md` says there is no database.
-- [Confirmed] Current GitHub workflow writes back to `main`, so local developers must pull/rebase before new task pushes.
+- [Confirmed] No database. The data model is markdown files plus in-memory dicts. Evidence: `specs/001-jarvis-mvp/data-model.md`.
+- [Confirmed] PII behavior must match selected `pii.mode`. Evidence: `spec.md`, `pii_guard.py`.
+- [Confirmed] Braden has no admin rights; future setup should avoid admin-only install paths. Evidence: `AGENTS.md`.
 
 ## 10. Risks
 
-- [Confirmed] Temporary cron is still active. Impact: repeated scheduled runs every 5 minutes until restored. Recommendation: restore `0 23 * * 1-5` after Section 6.
-- [Confirmed] Task IDs always start with `task-001-`. Impact: collisions and overwrite/update ambiguity. Evidence: `_build_task_id()` in `orchestrator/agents/orchestrator.py`.
-- [Confirmed] Power Automate smoke test always posts `jarvis/test.md` when secret exists. Impact: noisy validation and duplicate/non-task artifacts. Evidence: `.github/workflows/jarvis.yml`.
-- [Confirmed] Create-only PA flow can duplicate or fail on existing files. Impact: daily digests, lessons, and repeated task names will collide. Artifact Evidence: user validation transcript.
-- [Confirmed] LLM calls are not implemented. Impact: output quality is template-level, not intelligent task execution.
-- [Confirmed] PII redaction is heuristic. Impact: compliance risk if real data is used before broader validation.
-- [Inferred] No concurrency guard beyond the commit skip marker. Impact: multiple scheduled/manual runs may race on SharePoint files or inbox commits.
+- [Confirmed] `pii.mode` currently defaults to `off` in committed config. Impact: local runs will not redact names or emails. Recommendation: use `strict` for sensitive runs and consider a production override/check before GitHub Actions.
+- [Confirmed] End-to-end `pii.mode: off` evidence is not yet clean because one captured Scenario 4 summary still had `[REDACTED_NAME]`. Impact: validation evidence should be rerun after the Obsidian writer fix. Recommendation: rerun Scenario 4 and search output for `REDACTED`.
+- [Confirmed] Task IDs always start with `task-001-`. Impact: repeated title collisions can overwrite or confuse task records. Evidence: `_build_task_id()` in `orchestrator/agents/orchestrator.py`.
+- [Confirmed] Unit tests do not run in CI. Impact: regressions can land even when GitHub Actions is green. Evidence: `.github/workflows/jarvis.yml`.
+- [Confirmed] Power Automate smoke test writes `jarvis/test.md` on every run with a webhook secret. Impact: noisy artifacts and possible overwrites. Evidence: `.github/workflows/jarvis.yml`.
+- [Confirmed] Real LLM execution is absent. Impact: output quality is limited to template/deterministic summaries.
+- [Confirmed] PII detection is regex-based. Impact: false negatives and false positives are expected outside tested patterns.
+- [Inferred] Multiple manual/scheduled runs may race on SharePoint writes or bot commits. Evidence: no explicit workflow concurrency group in `.github/workflows/jarvis.yml`.
 
 ## 11. Unknowns
 
-- [Unverified] Exact exported Power Automate flow definition.
-- [Unverified] Whether SharePoint create/update expressions are now stable for nested paths.
-- [Unverified] Whether scheduled no-task digest validation has passed after the parser fix.
-- [Unverified] Whether current workflow has been restored from temporary cron.
-- [Unverified] Whether `ANTHROPIC_API_KEY` is valid beyond presence/DNS checks.
-- [Unverified] Whether the Anthropic model names `claude-sonnet-4-6` and `claude-haiku-4-5` are valid for the configured API.
+- [Unverified] Exact live Power Automate flow definition and whether it upserts files.
+- [Unverified] Current SharePoint path extraction expressions.
+- [Unverified] Whether OneDrive sync consistently surfaces files in Obsidian within target time.
+- [Unverified] Whether GitHub Actions environment can ever run GCP discovery; current design implies local operator auth only.
+- [Unverified] Whether Anthropic model names and credentials are valid for real model calls.
+- [Unverified] Whether evidence screenshots in `Verifcation-evidence` cover all Phase 5-6 proof after the latest PII fix.
 
 ## 12. Contradictions
 
-- [Contradictory Evidence] Specs say agents call Claude Enterprise API; code does not call Anthropic. Evidence: `plan.md` vs `orchestrator/agents/*.py`.
-- [Contradictory Evidence] Specs say GCP discovery is part of the larger plan; no GCP agent file exists. Evidence: `tasks.md` vs `rg --files`.
-- [Contradictory Evidence] Webhook contract includes Parse JSON and create/update; operator validation found the trigger schema made Parse JSON unnecessary and create-only was initially used. Evidence: `contracts/webhook-payload.md`; Artifact Evidence: user validation transcript.
-- [Contradictory Evidence] `tasks.md` checkboxes are all unchecked despite implemented files and passing tests.
+- [Contradictory Evidence] Specs and plans say Claude Enterprise agents will execute tasks; code records model names but makes no Anthropic calls. Evidence: `specs/001-jarvis-mvp/plan.md`, `orchestrator/agents/*.py`.
+- [Contradictory Evidence] `tasks.md` still lists some implemented items as incomplete. Evidence: `specs/001-jarvis-mvp/tasks.md`, `tests/test_gcp_discovery.py`, `orchestrator/agents/gcp_discovery.py`.
+- [Contradictory Evidence] `plan.md` describes `bq ls --project={project}`, but implemented code uses `--project_id={project}` because local validation showed `--project` failed. Evidence: `plan.md`, `gcp_discovery.py`, Artifact Evidence: user validation error.
+- [Contradictory Evidence] Original project constraints state "No PII"; updated spec/config allow `pii.mode: off` for approved local runs. Evidence: `AGENTS.md`, `spec.md`, `config/settings.yaml`.
+- [Contradictory Evidence] Webhook contract says use Parse JSON; validation found trigger-body schema access made separate Parse JSON unnecessary or fragile. Evidence: `contracts/webhook-payload.md`, Artifact Evidence: prior PA validation errors.
 
 ## 13. Recommended Stabilization Steps
 
-1. [Confirmed Need] Restore `.github/workflows/jarvis.yml` cron to `0 23 * * 1-5` after Section 6.
-2. [Confirmed Need] Export or document the exact Power Automate flow, especially parent folder extraction, file name extraction, create-or-update behavior, and response action.
-3. [Confirmed Need] Implement SharePoint create/update behavior to prevent duplicate or failed writes.
-4. [Confirmed Need] Replace fixed `task-001-` task IDs with monotonic or timestamp-based IDs.
-5. [Confirmed Need] Decide whether Phase 3 MVP should remain deterministic or add real Anthropic calls. If adding LLM calls, add redaction and trust-boundary tests first.
-6. [Confirmed Need] Expand PII tests beyond emails and two-word names before processing real enterprise content.
-7. [Confirmed Need] Add CI test execution to `.github/workflows/jarvis.yml`; currently the workflow installs dependencies and runs Jarvis but does not run unit tests.
+1. [Confirmed Need] Add `python -m unittest discover -s tests` to `.github/workflows/jarvis.yml`.
+2. [Confirmed Need] Rerun Scenario 4 after the latest PII-mode fix and capture proof that `pii.mode: off` produces no `[REDACTED_*]` markers.
+3. [Confirmed Need] Decide whether committed default `pii.mode: off` is acceptable. If not, use `strict` in committed config and document how to override locally.
+4. [Confirmed Need] Export or document the live Power Automate flow, including file upsert behavior.
+5. [Confirmed Need] Replace fixed `task-001-` IDs with timestamp, GitHub run ID, or a durable counter.
+6. [Confirmed Need] Add workflow `concurrency` to prevent overlapping scheduled/manual runs.
+7. [Confirmed Need] Gate or move the Power Automate smoke test so production runs do not always write `jarvis/test.md`.
+8. [Confirmed Need] Design the Anthropic client boundary before adding real LLM calls: prompt loading, PII boundary, retries, timeouts, token capture, and fixture-based tests.
+9. [Confirmed Need] Clarify whether Phase 2 specs are active backlog, archive, or future-only planning.
 
 ## 14. Missing Information / Follow-ups
 
-- Exported Power Automate flow definition.
-- Current validation status for Section 6 after template fix.
-- Decision on whether smoke test should stay in every run or move to manual validation only.
-- Clear operator README in `jarvis/README.md`.
-- Real Anthropic integration design and API error handling.
-- GCP discovery phase decision and scope.
-- Durable task ID allocation strategy.
-- Documentation of git workflow around bot-cleared inbox commits.
+- Exported Power Automate flow definition or exact build notes.
+- Current pass/fail evidence for Phase 5 and Phase 6 after the latest changes.
+- Policy decision for default `pii.mode`.
+- Operator README for daily use, GCP prerequisites, and git rebase after bot commits.
+- Anthropic integration design.
+- Unique task ID strategy.
+- CI regression-test step.
+- Evidence cleanup plan for the typo path `Verifcation-evidence`.

@@ -15,19 +15,43 @@ SAFE_PHRASES = {
     "Task ID",
     "Power Automate",
 }
+VALID_PII_MODES = {"strict", "standard", "off"}
 
 
-def contains_pii(text: str) -> bool:
+def get_pii_mode(settings: dict | None = None) -> str:
+    if not isinstance(settings, dict):
+        return "strict"
+    raw_mode = settings.get("pii", {}).get("mode", "strict")
+    mode = str(raw_mode).strip().lower()
+    return mode if mode in VALID_PII_MODES else "strict"
+
+
+def contains_pii(text: str, mode: str = "strict") -> bool:
     if not text:
         return False
-    return bool(EMAIL_PATTERN.search(text) or _contains_name_like_pii(text))
+    normalized_mode = _normalize_mode(mode)
+    if normalized_mode == "off":
+        return False
+    if EMAIL_PATTERN.search(text):
+        return True
+    return normalized_mode == "strict" and _contains_name_like_pii(text)
 
 
-def sanitize_text(text: str) -> str:
+def sanitize_text(text: str, mode: str = "strict") -> str:
     if not text:
         return text
+    normalized_mode = _normalize_mode(mode)
+    if normalized_mode == "off":
+        return text
     sanitized = EMAIL_PATTERN.sub("[REDACTED_EMAIL]", text)
+    if normalized_mode == "standard":
+        return sanitized
     return NAME_PATTERN.sub(_replace_name_match, sanitized)
+
+
+def _normalize_mode(mode: str) -> str:
+    normalized = str(mode).strip().lower()
+    return normalized if normalized in VALID_PII_MODES else "strict"
 
 
 def _contains_name_like_pii(text: str) -> bool:

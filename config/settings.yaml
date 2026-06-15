@@ -26,6 +26,13 @@ research:
   max_tokens_per_note: 2000
   cache_hit_threshold: 0.8
 
+pii:
+  # Modes:
+  # - strict: redact names and emails; stop tasks that include either.
+  # - standard: redact emails; allow technical metadata names such as dataset/table labels.
+  # - off: no PII detection or redaction; use only for explicitly approved local runs.
+  mode: off
+
 gcp:
   # Operator must set this to a readable BigQuery project before daytime discovery.
-  project: ""
+  project: "dev-2534-puw-procuremen-5af261"

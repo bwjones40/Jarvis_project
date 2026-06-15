@@ -7,7 +7,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any
 
-from orchestrator.utils.pii_guard import contains_pii, sanitize_text
+from orchestrator.utils.pii_guard import contains_pii, get_pii_mode, sanitize_text
 from orchestrator.utils.token_logger import log_agent_run
 
 
@@ -17,10 +17,11 @@ def run_orchestrator(
     settings: dict[str, Any],
 ) -> dict[str, Any]:
     start = perf_counter()
-    sanitized_task = {key: sanitize_text(value) if isinstance(value, str) else value for key, value in task.items()}
+    pii_mode = get_pii_mode(settings)
+    sanitized_task = {key: sanitize_text(value, mode=pii_mode) if isinstance(value, str) else value for key, value in task.items()}
     clarifications_needed: list[str] = []
     status = "completed"
-    if any(contains_pii(str(task.get(field, ""))) for field in ("title", "request", "context", "copilot_handoff")):
+    if any(contains_pii(str(task.get(field, "")), mode=pii_mode) for field in ("title", "request", "context", "copilot_handoff")):
         clarifications_needed.append("PII detected in input. Remove names, email addresses, and customer data before rerunning.")
         status = "needs_clarification"
         sanitized_task["request"] = "Input withheld because it contained PII."
