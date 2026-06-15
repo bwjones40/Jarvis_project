@@ -42,4 +42,9 @@ coverage.xml
 htmlcov/
 dist/
 build/
-.html
+*.html
+
+# Local verification artifacts
+/phase2-verification-runbook.html
+/specs/002-phase2-agent-ecosystem/phase2-verification-runbook.html
+/specs/002-phase2-agent-ecosystem/Verification_Evidence/
