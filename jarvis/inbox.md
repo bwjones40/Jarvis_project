@@ -1,13 +1,13 @@
 # Jarvis Inbox
 
-## Task: Confirming Token Usage
+## Task: Replace this title before commit
 **Priority**: medium
 **Mode**: overnight
 **Agents needed**: orchestrator, research, obsidian
 **Due**: next run
 
 ### Request
-Generate a fast task so I can inspect the token cost table is create for a task. Please send the message hello to the Claude_API using the model haiku and return the message that claude sent back.
+Describe the task Jarvis should complete before the next run.
 
 ### Context
 Optional project context, links, or non-PII background.
