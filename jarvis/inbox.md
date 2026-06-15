@@ -1,13 +1,13 @@
 # Jarvis Inbox
 
-## Task: Sample Research Question
+## Task: Replace this title before commit
 **Priority**: medium
 **Mode**: overnight
 **Agents needed**: orchestrator, research, obsidian
 **Due**: next run
 
 ### Request
-I want you to look on the internet to see what the current inflation rate is based off of FED data.
+Describe the task Jarvis should complete before the next run.
 
 ### Context
 Optional project context, links, or non-PII background.
@@ -16,3 +16,4 @@ Optional project context, links, or non-PII background.
 Optional manual handoff instructions for Copilot.
 
 ---
+_Clear this file after each run. Jarvis archives completed tasks to jarvis/tasks/_

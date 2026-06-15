@@ -54,5 +54,13 @@
     "input_tokens": 0,
     "output_tokens": 0,
     "estimated_cost": 0.0
+  },
+  {
+    "task_id": "task-27571926873-sample-research-question",
+    "run_timestamp": "2026-06-15T19:46:34Z",
+    "status": "completed",
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "estimated_cost": 0.0
   }
 ]
