@@ -22,5 +22,13 @@
     "input_tokens": 0,
     "output_tokens": 0,
     "estimated_cost": 0.0
+  },
+  {
+    "task_id": "task-001-phase-6-cost-rollup-task-2-v3",
+    "run_timestamp": "2026-06-15T13:16:28Z",
+    "status": "completed",
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "estimated_cost": 0.0
   }
 ]
