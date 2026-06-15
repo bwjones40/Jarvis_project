@@ -65,7 +65,7 @@ Phase 2 DOES NOT replace Phase 1. All existing agents, contracts, and integratio
 | Score | Action |
 |---|---|
 | ≥ 0.90 | Accept output, continue pipeline |
-| 0.60–0.89 | Retry agent once; accept if retry score ≥ 0.60 |
+| 0.60–0.89 | Retry agent once; accept if retry score ≥ 0.85 |
 | < 0.60 | Skip agent, mark `partial`, add to digest as `[HUMAN REVIEW REQUIRED]` |
 
 Thresholds are self-calibrating over time: when 20+ data points exist for an agent, the CI Agent evaluates whether thresholds should shift and proposes adjustment in the next bi-weekly report.

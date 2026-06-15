@@ -129,7 +129,7 @@ PM_WORKFLOW INTEGRATION
 **Threshold logic**:
 ```
 score ≥ 0.90        → accept, continue
-0.60 ≤ score < 0.90 → retry agent once; accept if retry score ≥ 0.60
+0.60 ≤ score < 0.90 → retry agent once; accept if retry score ≥ 0.85
 score < 0.60        → skip agent, mark partial, add to digest as [HUMAN REVIEW REQUIRED]
 ```
 
