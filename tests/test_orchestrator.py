@@ -263,6 +263,28 @@ class MainAndTokenLoggerTests(unittest.TestCase):
         self.assertEqual(result["status"], "needs_clarification")
         self.assertEqual(result["task"]["request"], "Input withheld because it contained PII.")
 
+    def test_phase_6_validation_task_is_not_blocked_as_pii(self) -> None:
+        task = {
+            "title": "Confirming Token Usage",
+            "priority": "medium",
+            "mode": "overnight",
+            "agents_needed": ["orchestrator", "research", "obsidian"],
+            "due": "next run",
+            "request": (
+                "Generate a fast task so I can inspect the token cost table is create for a task. "
+                "Please send the message hello to the Claude API using the model haiku and return "
+                "the message that claude sent back."
+            ),
+            "context": "",
+            "copilot_handoff": "",
+        }
+
+        result = run_orchestrator(task, vault_notes=[], settings={})
+
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["task_title"], "Confirming Token Usage")
+        self.assertEqual(result["task"]["request"], task["request"])
+
     def test_research_caps_cache_hit_context_to_configured_token_budget(self) -> None:
         note_dir = self.repo_root / "jarvis" / "knowledge"
         note_dir.mkdir(parents=True, exist_ok=True)

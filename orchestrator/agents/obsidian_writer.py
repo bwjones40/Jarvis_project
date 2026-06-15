@@ -132,13 +132,27 @@ def _build_digest(task_result: dict[str, Any], vault_root: str, tasks_dir: str, 
     open_questions = [f"- {item}" for item in task_result["clarifications_needed"]] or ["- (none)"]
     knowledge_lines = [f"- {path}" for path in task_result.get("knowledge_updates", [])] or ["- (none)"]
     learning_lines = [f"- {run['agent_name']}: completed" for run in task_result["agents_executed"]] or ["- (none)"]
+    completed_lines = (
+        [f"- {task_result['task_id']} — {sanitize_text(task_result['task_title'], mode=pii_mode)}"]
+        if task_result["status"] == "completed"
+        else ["- (none)"]
+    )
+    attention_lines = (
+        [f"- {task_result['task_id']} — {sanitize_text(task_result['task_title'], mode=pii_mode)} ({task_result['status']})"]
+        if task_result["status"] != "completed"
+        else ["- (none)"]
+    )
     return "\n".join(
         [
             f"# Nightly Digest: {_today_string()}",
             "",
             "## Tasks Completed",
             "",
-            f"- {task_result['task_id']} — {sanitize_text(task_result['task_title'], mode=pii_mode)}",
+            *completed_lines,
+            "",
+            "## Tasks Requiring Attention",
+            "",
+            *attention_lines,
             "",
             "## Usage",
             "",

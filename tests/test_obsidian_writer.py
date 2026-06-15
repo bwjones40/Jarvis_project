@@ -218,6 +218,41 @@ class ObsidianWriterTests(unittest.TestCase):
         self.assertIn("## Weekly Cost Rollup", digest["content"])
         self.assertIn("Last 7 days estimated cost", digest["content"])
 
+    def test_digest_does_not_count_clarification_runs_as_completed(self) -> None:
+        task_result = {
+            "task_id": "task-001-needs-clarification",
+            "task_title": "Needs clarification",
+            "run_timestamp": "2026-06-13T00:00:00Z",
+            "mode": "overnight",
+            "status": "needs_clarification",
+            "agents_executed": [
+                {
+                    "agent_name": "orchestrator",
+                    "model": "claude-sonnet-4-6",
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "duration_seconds": 0.1,
+                    "output": {},
+                    "errors": [],
+                }
+            ],
+            "output_summary": "Task parsed and routed for execution.",
+            "draft_communications": [],
+            "clarifications_needed": ["Add missing context."],
+            "knowledge_updates": [],
+        }
+
+        outputs = build_vault_outputs(
+            task_result=task_result,
+            task={"request": "Clarify this request."},
+            settings={"models": {"subagent": "claude-haiku-4-5"}, "vault": {"digests_dir": "jarvis/digests", "tasks_dir": "jarvis/tasks", "lessons_dir": "jarvis/agents"}},
+        )
+
+        digest = next(item for item in outputs if item["vault_path"].startswith("jarvis/digests/"))
+        self.assertIn("## Tasks Completed\n\n- (none)", digest["content"])
+        self.assertIn("## Tasks Requiring Attention", digest["content"])
+        self.assertIn("task-001-needs-clarification", digest["content"])
+
     def test_digest_honors_off_pii_mode(self) -> None:
         task_result = {
             "task_id": "task-001-digest-pii-off",

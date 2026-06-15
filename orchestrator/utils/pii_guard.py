@@ -14,6 +14,9 @@ SAFE_PHRASES = {
     "Nightly Digest",
     "Task ID",
     "Power Automate",
+    "Confirming Token",
+    "Token Usage",
+    "Claude API",
 }
 VALID_PII_MODES = {"strict", "standard", "off"}
 

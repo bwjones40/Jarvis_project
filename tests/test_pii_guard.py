@@ -25,6 +25,12 @@ class PiiGuardTests(unittest.TestCase):
     def test_invalid_config_mode_falls_back_to_strict(self) -> None:
         self.assertEqual(get_pii_mode({"pii": {"mode": "not-a-mode"}}), "strict")
 
+    def test_strict_mode_allows_phase_6_validation_terms(self) -> None:
+        text = "Confirming Token Usage should call the Claude API through Jarvis."
+
+        self.assertFalse(contains_pii(text, mode="strict"))
+        self.assertEqual(sanitize_text(text, mode="strict"), text)
+
 
 if __name__ == "__main__":
     unittest.main()
