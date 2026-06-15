@@ -1,19 +1,19 @@
 # Jarvis Inbox
 
-## Task: Phase 6 Research Cache Hit Check
+## Task: Replace this title before commit
 **Priority**: medium
 **Mode**: overnight
 **Agents needed**: orchestrator, research, obsidian
 **Due**: next run
 
 ### Request
-Search the vault for Jarvis validation notes and summarize the most relevant existing information.
+Describe the task Jarvis should complete before the next run.
 
 ### Context
-This verifies that the Research AgentRun output includes cache_hit true or false.
+Optional project context, links, or non-PII background.
 
 ### Copilot handoff
-None.
+Optional manual handoff instructions for Copilot.
 
 ---
 _Clear this file after each run. Jarvis archives completed tasks to jarvis/tasks/_

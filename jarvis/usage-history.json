@@ -46,5 +46,13 @@
     "input_tokens": 0,
     "output_tokens": 0,
     "estimated_cost": 0.0
+  },
+  {
+    "task_id": "task-001-phase-6-redacted-name-redacted-name",
+    "run_timestamp": "2026-06-15T13:32:57Z",
+    "status": "needs_clarification",
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "estimated_cost": 0.0
   }
 ]
