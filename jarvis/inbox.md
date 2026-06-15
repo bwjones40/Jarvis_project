@@ -1,19 +1,19 @@
 # Jarvis Inbox
 
-## Task: Phase 6 Context Pruning Check
+## Task: Replace this title before commit
 **Priority**: medium
 **Mode**: overnight
 **Agents needed**: orchestrator, research, obsidian
 **Due**: next run
 
 ### Request
-Summarize relevant Jarvis validation context from the vault and include only the most relevant context.
+Describe the task Jarvis should complete before the next run.
 
 ### Context
-This verifies that the orchestrator caps knowledge context at 3 notes and logs truncation metadata.
+Optional project context, links, or non-PII background.
 
 ### Copilot handoff
-None.
+Optional manual handoff instructions for Copilot.
 
 ---
 _Clear this file after each run. Jarvis archives completed tasks to jarvis/tasks/_
