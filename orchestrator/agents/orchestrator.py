@@ -48,9 +48,15 @@ def run_orchestrator(
     }
 
     usage = type("Usage", (), {"input_tokens": 0, "output_tokens": 0})()
+    knowledge_context = _prepare_knowledge_context(vault_notes, settings, pii_mode)
     agent_output = {
         "plan": f"Route to {', '.join(routing['agents_to_run'])}" if routing["agents_to_run"] else "No downstream agents required.",
-        "knowledge_context_used": [note["path"] for note in vault_notes[:3]],
+        "knowledge_context_used": [note["path"] for note in knowledge_context],
+        "knowledge_context": knowledge_context,
+        "context_limits": {
+            "max_notes": _max_context_notes(settings),
+            "max_tokens_per_note": _max_tokens_per_note(settings),
+        },
         "clarifications_needed": clarifications_needed,
     }
     task_result["agents_executed"].append(
@@ -82,6 +88,39 @@ def _build_routing(agents_needed: list[str], mode: str) -> dict[str, list[str]]:
 def _build_task_id(title: str) -> str:
     slug = "-".join(part for part in "".join(char.lower() if char.isalnum() else "-" for char in title).split("-") if part)
     return f"task-001-{slug or 'untitled-task'}"
+
+
+def _prepare_knowledge_context(vault_notes: list[dict[str, Any]], settings: dict[str, Any], pii_mode: str) -> list[dict[str, Any]]:
+    max_notes = _max_context_notes(settings)
+    max_tokens = _max_tokens_per_note(settings)
+    prepared: list[dict[str, Any]] = []
+    for note in vault_notes[:max_notes]:
+        content = sanitize_text(str(note.get("content", "")), mode=pii_mode)
+        truncated_content, truncated = _truncate_words(content, max_tokens)
+        prepared.append(
+            {
+                "path": note["path"],
+                "included_tokens": len(truncated_content.split()),
+                "truncated": truncated,
+                "content": truncated_content,
+            }
+        )
+    return prepared
+
+
+def _max_context_notes(settings: dict[str, Any]) -> int:
+    return int(settings.get("research", {}).get("max_context_notes", 3))
+
+
+def _max_tokens_per_note(settings: dict[str, Any]) -> int:
+    return int(settings.get("research", {}).get("max_tokens_per_note", 2000))
+
+
+def _truncate_words(content: str, max_tokens: int) -> tuple[str, bool]:
+    words = content.split()
+    if max_tokens <= 0 or len(words) <= max_tokens:
+        return content, False
+    return " ".join(words[:max_tokens]), True
 
 
 def _needs_clarification(request: str) -> bool:

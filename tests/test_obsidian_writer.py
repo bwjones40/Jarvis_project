@@ -1,9 +1,18 @@
 import unittest
+from pathlib import Path
+from uuid import uuid4
+import shutil
 
 from orchestrator.agents.obsidian_writer import build_vault_outputs
 
 
 class ObsidianWriterTests(unittest.TestCase):
+    def _make_temp_vault(self) -> Path:
+        temp_dir = Path(".tmp-tests") / f"vault-{uuid4().hex}"
+        temp_dir.mkdir(parents=True, exist_ok=False)
+        self.addCleanup(lambda: shutil.rmtree(temp_dir, ignore_errors=True))
+        return temp_dir
+
     def test_digest_generated_when_no_tasks_ran(self) -> None:
         outputs = build_vault_outputs(
             task_result=None,
@@ -217,6 +226,65 @@ class ObsidianWriterTests(unittest.TestCase):
         digest = next(item for item in outputs if item["vault_path"].startswith("jarvis/digests/"))
         self.assertIn("## Weekly Cost Rollup", digest["content"])
         self.assertIn("Last 7 days estimated cost", digest["content"])
+
+    def test_digest_weekly_rollup_sums_three_task_records(self) -> None:
+        vault_root = self._make_temp_vault()
+        tasks_dir = vault_root / "jarvis" / "tasks"
+        tasks_dir.mkdir(parents=True)
+        (tasks_dir / "task-001-prior-a.md").write_text(
+            "\n".join(
+                [
+                    "**Run**: 2026-06-13T00:00:00Z",
+                    "| **Total** |  | **100** | **50** | **1.0s** |",
+                    "**Estimated cost**: $0.01",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        (tasks_dir / "task-001-prior-b.md").write_text(
+            "\n".join(
+                [
+                    "**Run**: 2026-06-14T00:00:00Z",
+                    "| **Total** |  | **200** | **70** | **1.0s** |",
+                    "**Estimated cost**: $0.02",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        task_result = {
+            "task_id": "task-001-current",
+            "task_title": "Current",
+            "run_timestamp": "2026-06-15T00:00:00Z",
+            "mode": "overnight",
+            "status": "completed",
+            "agents_executed": [
+                {
+                    "agent_name": "orchestrator",
+                    "model": "claude-sonnet-4-6",
+                    "input_tokens": 300,
+                    "output_tokens": 80,
+                    "duration_seconds": 1.0,
+                    "output": {},
+                    "errors": [],
+                }
+            ],
+            "output_summary": "Current task complete.",
+            "draft_communications": [],
+            "clarifications_needed": [],
+            "knowledge_updates": [],
+        }
+
+        outputs = build_vault_outputs(
+            task_result=task_result,
+            task={"request": "Summarize costs."},
+            settings={"models": {"subagent": "claude-haiku-4-5"}, "vault": {"digests_dir": "jarvis/digests", "tasks_dir": "jarvis/tasks", "lessons_dir": "jarvis/agents"}},
+            vault_root=str(vault_root),
+        )
+
+        digest = next(item for item in outputs if item["vault_path"].startswith("jarvis/digests/"))
+        self.assertIn("Last 7 days input tokens: 600", digest["content"])
+        self.assertIn("Last 7 days output tokens: 200", digest["content"])
+        self.assertIn("Task records counted: 3", digest["content"])
 
     def test_digest_does_not_count_clarification_runs_as_completed(self) -> None:
         task_result = {

@@ -285,6 +285,35 @@ class MainAndTokenLoggerTests(unittest.TestCase):
         self.assertEqual(result["task_title"], "Confirming Token Usage")
         self.assertEqual(result["task"]["request"], task["request"])
 
+    def test_orchestrator_caps_and_logs_knowledge_context(self) -> None:
+        task = {
+            "title": "Context pruning",
+            "priority": "medium",
+            "mode": "overnight",
+            "agents_needed": ["orchestrator", "research", "obsidian"],
+            "due": "next run",
+            "request": "Summarize relevant context.",
+            "context": "",
+            "copilot_handoff": "",
+        }
+        vault_notes = [
+            {"path": f"note-{index}.md", "content": "word " * 10, "title": f"Note {index}"}
+            for index in range(4)
+        ]
+        vault_notes[0]["content"] = "longword " * 25
+
+        result = run_orchestrator(
+            task,
+            vault_notes=vault_notes,
+            settings={"research": {"max_context_notes": 3, "max_tokens_per_note": 20}},
+        )
+
+        output = result["agents_executed"][0]["output"]
+        self.assertEqual(len(output["knowledge_context"]), 3)
+        self.assertEqual(output["knowledge_context_used"], ["note-0.md", "note-1.md", "note-2.md"])
+        self.assertTrue(output["knowledge_context"][0]["truncated"])
+        self.assertLessEqual(output["knowledge_context"][0]["included_tokens"], 20)
+
     def test_research_caps_cache_hit_context_to_configured_token_budget(self) -> None:
         note_dir = self.repo_root / "jarvis" / "knowledge"
         note_dir.mkdir(parents=True, exist_ok=True)
