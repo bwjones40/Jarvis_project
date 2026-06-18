@@ -1,13 +1,13 @@
 # Jarvis Inbox
 
-## Task: Proof that Jarvis Works
+## Task: Phase 0 Validation P0-6 Evidence
 **Priority**: medium
 **Mode**: overnight
 **Agents needed**: orchestrator, research, obsidian
 **Due**: next run
 
 ### Request
-Please prompt claude api to see what the highest rated restuarants Sorrento, Italy
+Please read my obsidian vault and summarize every task that I have completed thus far.
 
 ### Context
 Optional project context, links, or non-PII background.

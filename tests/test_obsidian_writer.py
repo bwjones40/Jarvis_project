@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from uuid import uuid4
 import shutil
+from unittest.mock import patch
 
 from orchestrator.agents.obsidian_writer import build_vault_outputs
 
@@ -275,12 +276,13 @@ class ObsidianWriterTests(unittest.TestCase):
             "knowledge_updates": [],
         }
 
-        outputs = build_vault_outputs(
-            task_result=task_result,
-            task={"request": "Summarize costs."},
-            settings={"models": {"subagent": "claude-haiku-4-5"}, "vault": {"digests_dir": "jarvis/digests", "tasks_dir": "jarvis/tasks", "lessons_dir": "jarvis/agents"}},
-            vault_root=str(vault_root),
-        )
+        with patch("orchestrator.agents.obsidian_writer._call_obsidian_writer_model", return_value=None):
+            outputs = build_vault_outputs(
+                task_result=task_result,
+                task={"request": "Summarize costs."},
+                settings={"models": {"subagent": "claude-haiku-4-5"}, "vault": {"digests_dir": "jarvis/digests", "tasks_dir": "jarvis/tasks", "lessons_dir": "jarvis/agents"}},
+                vault_root=str(vault_root),
+            )
 
         digest = next(item for item in outputs if item["vault_path"].startswith("jarvis/digests/"))
         self.assertIn("Last 7 days input tokens: 600", digest["content"])
@@ -335,12 +337,13 @@ class ObsidianWriterTests(unittest.TestCase):
             "knowledge_updates": [],
         }
 
-        outputs = build_vault_outputs(
-            task_result=task_result,
-            task={"request": "Summarize costs."},
-            settings={"models": {"subagent": "claude-haiku-4-5"}, "vault": {"digests_dir": "jarvis/digests", "tasks_dir": "jarvis/tasks", "lessons_dir": "jarvis/agents"}},
-            vault_root=str(vault_root),
-        )
+        with patch("orchestrator.agents.obsidian_writer._call_obsidian_writer_model", return_value=None):
+            outputs = build_vault_outputs(
+                task_result=task_result,
+                task={"request": "Summarize costs."},
+                settings={"models": {"subagent": "claude-haiku-4-5"}, "vault": {"digests_dir": "jarvis/digests", "tasks_dir": "jarvis/tasks", "lessons_dir": "jarvis/agents"}},
+                vault_root=str(vault_root),
+            )
 
         digest = next(item for item in outputs if item["vault_path"].startswith("jarvis/digests/"))
         self.assertIn("Last 7 days input tokens: 600", digest["content"])

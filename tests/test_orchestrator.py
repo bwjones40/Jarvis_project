@@ -101,9 +101,17 @@ class MainAndTokenLoggerTests(unittest.TestCase):
     def test_direct_task_runs_daytime_gcp_discovery(self) -> None:
         stdout = io.StringIO()
 
+        from orchestrator.agents.validation import ValidationResult
+        synthetic_pass = ValidationResult(
+            confidence_score=0.90, relevance=0.90, completeness=0.90,
+            actionability=0.90, format_adherence=0.90, notes="SYNTHETIC",
+            pass_=True, retry_recommended=False, escalate=False,
+        )
         with patch("orchestrator.main.run_gcp_discovery") as gcp_mock, patch(
             "orchestrator.main.build_vault_outputs", return_value=[]
-        ), patch("orchestrator.main._maybe_post_outputs", return_value=False), redirect_stdout(stdout):
+        ), patch("orchestrator.main._maybe_post_outputs", return_value=False), patch(
+            "orchestrator.main.validation_agent.score_output", return_value=synthetic_pass
+        ), redirect_stdout(stdout):
             gcp_mock.side_effect = lambda task_result, settings: task_result
             exit_code = main(
                 [

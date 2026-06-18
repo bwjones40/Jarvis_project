@@ -1,0 +1,72 @@
+{
+  "run": {
+    "run_id": "1f39b20a-89e2-408a-aa30-a70b19ca4d0b",
+    "trace_id": "b8f03d75-363b-48e1-896d-d7e9f003fe2f",
+    "workflow_id": "jarvis",
+    "trigger_source": "local",
+    "task_id": "task-20260618-131256-daytime-gcp-discovery",
+    "started_at": "2026-06-18T13:12:56.680039Z",
+    "completed_at": "2026-06-18T13:12:56.684336Z",
+    "overall_status": "completed"
+  },
+  "agents": [
+    {
+      "timestamp": "2026-06-18T13:12:56.681086Z",
+      "run_id": "1f39b20a-89e2-408a-aa30-a70b19ca4d0b",
+      "trace_id": "b8f03d75-363b-48e1-896d-d7e9f003fe2f",
+      "agent_name": "orchestrator",
+      "agent_version": "1.0.0",
+      "status": "success",
+      "latency_ms": 0,
+      "token_usage": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "estimated_cost_usd": 0.0
+      },
+      "input_summary": "Task: List all BigQuery datasets in the non-prod environment",
+      "output_summary": "Route to gcp, obsidian"
+    },
+    {
+      "timestamp": "2026-06-18T13:12:56.682071Z",
+      "run_id": "1f39b20a-89e2-408a-aa30-a70b19ca4d0b",
+      "trace_id": "b8f03d75-363b-48e1-896d-d7e9f003fe2f",
+      "agent_name": "gcp_discovery",
+      "agent_version": "1.0.0",
+      "status": "success",
+      "latency_ms": 100,
+      "token_usage": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "estimated_cost_usd": 0.0
+      },
+      "input_summary": "Task: List all BigQuery datasets in the non-prod environment",
+      "output_summary": "ok"
+    },
+    {
+      "timestamp": "2026-06-18T13:12:56.683279Z",
+      "run_id": "1f39b20a-89e2-408a-aa30-a70b19ca4d0b",
+      "trace_id": "b8f03d75-363b-48e1-896d-d7e9f003fe2f",
+      "agent_name": "obsidian_writer",
+      "agent_version": "1.0.0",
+      "status": "success",
+      "latency_ms": 100,
+      "token_usage": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "estimated_cost_usd": 0.0
+      },
+      "input_summary": "TaskResult with 2 prior agent runs.",
+      "output_summary": "Wrote task record and digest. Notes updated: 0.",
+      "confidence_score": 0.95,
+      "validation_pass": true,
+      "retry_count": 0,
+      "skip_reason": null,
+      "escalation_flag": false,
+      "human_review_required": false,
+      "partial_run": false
+    }
+  ]
+}

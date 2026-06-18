@@ -1,0 +1,48 @@
+{
+  "run": {
+    "run_id": "91ef5aa4-79be-4006-8258-14ec2eb1d174",
+    "trace_id": "b652725f-7219-4d2f-bb9b-874c7fe44176",
+    "workflow_id": "jarvis",
+    "trigger_source": "local",
+    "task_id": "task-20260618-130429-daytime-gcp-discovery",
+    "started_at": "2026-06-18T13:04:29.048708Z",
+    "completed_at": "2026-06-18T13:04:31.001994Z",
+    "overall_status": "failed"
+  },
+  "agents": [
+    {
+      "timestamp": "2026-06-18T13:04:29.050611Z",
+      "run_id": "91ef5aa4-79be-4006-8258-14ec2eb1d174",
+      "trace_id": "b652725f-7219-4d2f-bb9b-874c7fe44176",
+      "agent_name": "orchestrator",
+      "agent_version": "1.0.0",
+      "status": "success",
+      "latency_ms": 0,
+      "token_usage": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "estimated_cost_usd": 0.0
+      },
+      "input_summary": "Task: List all BigQuery datasets in the non-prod environment",
+      "output_summary": "Route to gcp, obsidian"
+    },
+    {
+      "timestamp": "2026-06-18T13:04:29.053378Z",
+      "run_id": "91ef5aa4-79be-4006-8258-14ec2eb1d174",
+      "trace_id": "b652725f-7219-4d2f-bb9b-874c7fe44176",
+      "agent_name": "orchestrator",
+      "agent_version": "1.0.0",
+      "status": "success",
+      "latency_ms": 0,
+      "token_usage": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "estimated_cost_usd": 0.0
+      },
+      "input_summary": "Task: List all BigQuery datasets in the non-prod environment",
+      "output_summary": "Route to gcp, obsidian"
+    }
+  ]
+}

@@ -59,7 +59,7 @@ def score_output(
             system=VALIDATION_PROMPT,
             messages=[{"role": "user", "content": user_msg}],
         )
-        raw = json.loads(_extract_response_text(getattr(response, "content", [])))
+        raw = json.loads(_strip_code_fences(_extract_response_text(getattr(response, "content", []))))
         r = float(raw["relevance"])
         c = float(raw["completeness"])
         a = float(raw["actionability"])
@@ -97,6 +97,15 @@ def _synthetic_result(score: float, thresholds: dict, notes: str = "SYNTHETIC") 
         retry_recommended=retry_min <= score < pass_threshold,
         escalate=score < retry_min,
     )
+
+
+def _strip_code_fences(text: str) -> str:
+    """Remove markdown code fences the model sometimes adds despite instructions."""
+    import re
+    text = text.strip()
+    text = re.sub(r"^```(?:json)?\s*", "", text)
+    text = re.sub(r"\s*```$", "", text)
+    return text.strip()
 
 
 def _extract_response_text(content: Any) -> str:
