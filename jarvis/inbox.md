@@ -1,13 +1,13 @@
 # Jarvis Inbox
 
-## Task: Replace this title before commit
+## Task: Proof that Jarvis Works
 **Priority**: medium
 **Mode**: overnight
 **Agents needed**: orchestrator, research, obsidian
 **Due**: next run
 
 ### Request
-Describe the task Jarvis should complete before the next run.
+Please prompt claude api to see what the highest rated restuarants Sorrento, Italy
 
 ### Context
 Optional project context, links, or non-PII background.
