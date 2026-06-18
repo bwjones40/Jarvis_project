@@ -1,13 +1,13 @@
 # Jarvis Inbox
 
-## Task: Phase 0 Validation P0-6 Evidence
+## Task: Replace this title before commit
 **Priority**: medium
 **Mode**: overnight
 **Agents needed**: orchestrator, research, obsidian
 **Due**: next run
 
 ### Request
-Please read my obsidian vault and summarize every task that I have completed thus far.
+Describe the task Jarvis should complete before the next run.
 
 ### Context
 Optional project context, links, or non-PII background.
