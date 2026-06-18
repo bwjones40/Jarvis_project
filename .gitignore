@@ -44,6 +44,12 @@ dist/
 build/
 *.html
 
+# Claude Code session artifacts
+.claude/settings.local.json
+
+# Jarvis runtime logs
+jarvis/logs/
+
 # Local verification artifacts
 /phase2-verification-runbook.html
 /specs/002-phase2-agent-ecosystem/phase2-verification-runbook.html
