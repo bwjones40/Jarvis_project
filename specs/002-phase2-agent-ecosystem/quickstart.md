@@ -127,29 +127,55 @@ Required secrets in GitHub Actions:
 - `token_usage.estimated_cost_usd` is non-zero for all LLM-backed agents
 - `overall_status` matches the task outcome
 
-**Validation command** (run locally after pulling the log file):
-```bash
-python - <<'PY'
-import json
+**Validation command** (run in PowerShell from the repo root after the Actions run completes):
+
+```powershell
+# Update VAULT_ROOT if your OneDrive path differs
+$VAULT_ROOT = "C:\Users\jonesbrade\OneDrive - Tyson Online\Meetings\Files\Analytics\Braden\Obsidian\AIOps_Vault"
+
+python - $VAULT_ROOT <<'PY'
+import json, sys
 from pathlib import Path
 from datetime import date
 
-log_dir = Path(f"jarvis/logs/{date.today().isoformat()}")
+vault_root = Path(sys.argv[1])
+log_dir = vault_root / "jarvis" / "logs" / date.today().isoformat()
 files = list(log_dir.glob("*.json"))
-assert files, f"No log files found in {log_dir}"
+if not files:
+    print(f"FAIL: No log files found in {log_dir}")
+    sys.exit(1)
+
+errors = []
 for f in files:
-    data = json.loads(f.read_text())
-    assert "run" in data, "Missing run object"
-    assert "agents" in data, "Missing agents array"
-    assert len(data["agents"]) > 0, "Empty agents array"
+    try:
+        data = json.loads(f.read_text(encoding="utf-8"))
+    except Exception as e:
+        errors.append(f"{f.name}: could not parse — {e}")
+        continue
+    if "run" not in data:
+        errors.append(f"{f.name}: missing 'run' object")
+    if "agents" not in data or len(data["agents"]) == 0:
+        errors.append(f"{f.name}: missing or empty 'agents' array")
+        continue
     for entry in data["agents"]:
-        assert "run_id" in entry
-        assert "agent_name" in entry
-        assert "status" in entry
-        assert entry["token_usage"]["total"] >= 0
-        if entry["agent_name"] in ("research", "obsidian_writer"):
-            assert entry["token_usage"]["estimated_cost_usd"] > 0, \
-                f"{entry['agent_name']} has zero cost — LLM not called"
+        name = entry.get("agent_name", "unknown")
+        for field in ("run_id", "agent_name", "status"):
+            if field not in entry:
+                errors.append(f"{f.name} [{name}]: missing field '{field}'")
+        token = entry.get("token_usage", {})
+        if token.get("total", -1) < 0:
+            errors.append(f"{f.name} [{name}]: token_usage.total is negative")
+        if name in ("research", "obsidian_writer"):
+            cost = token.get("estimated_cost_usd", 0)
+            if cost <= 0:
+                errors.append(f"{f.name} [{name}]: estimated_cost_usd is {cost} — LLM not called")
+
+if errors:
+    print("FAIL:")
+    for e in errors:
+        print(f"  - {e}")
+    sys.exit(1)
+
 print(f"PASS: {len(files)} log file(s) found and valid")
 PY
 ```
