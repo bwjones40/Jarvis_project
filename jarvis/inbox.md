@@ -1,6 +1,6 @@
 # Jarvis Inbox
 
-## Task: Research GitHub Actions cost optimization strategies for scheduled Python workflows
+## Task: Research GitHub Actions cost optimization for scheduled workflows
 **Priority**: medium
 **Mode**: overnight
 **Agents needed**: orchestrator, research, obsidian
