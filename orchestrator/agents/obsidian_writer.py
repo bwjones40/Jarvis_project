@@ -126,7 +126,7 @@ def _build_task_record(task_result: dict[str, Any], task: dict[str, Any], pii_mo
             "",
             "## Output",
             "",
-            sanitize_text(task_result["output_summary"], mode=pii_mode),
+            sanitize_text(task_result.get("research_summary") or task_result["output_summary"], mode=pii_mode),
             "",
             "## Token Usage",
             "",
