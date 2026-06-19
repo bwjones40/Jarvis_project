@@ -118,5 +118,13 @@
     "input_tokens": 1955,
     "output_tokens": 2131,
     "estimated_cost": 0.0335
+  },
+  {
+    "task_id": "task-27829749140-research-best-practices-for-structured-l",
+    "run_timestamp": "2026-06-19T13:52:07Z",
+    "status": "partial",
+    "input_tokens": 3119,
+    "output_tokens": 3072,
+    "estimated_cost": 0.0436
   }
 ]
