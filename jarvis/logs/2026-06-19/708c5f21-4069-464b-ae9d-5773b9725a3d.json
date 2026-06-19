@@ -1,0 +1,79 @@
+{
+  "run": {
+    "run_id": "708c5f21-4069-464b-ae9d-5773b9725a3d",
+    "trace_id": "d0b139fd-9074-4369-ba61-1117c6c55b33",
+    "workflow_id": "jarvis",
+    "trigger_source": "local",
+    "task_id": "task-20260619-161212-research-python-structured-logging-patte",
+    "started_at": "2026-06-19T16:12:12.528669Z",
+    "completed_at": "2026-06-19T16:12:12.539279Z",
+    "overall_status": "completed"
+  },
+  "agents": [
+    {
+      "timestamp": "2026-06-19T16:12:12.531547Z",
+      "run_id": "708c5f21-4069-464b-ae9d-5773b9725a3d",
+      "trace_id": "d0b139fd-9074-4369-ba61-1117c6c55b33",
+      "agent_name": "orchestrator",
+      "agent_version": "1.0.0",
+      "status": "success",
+      "latency_ms": 0,
+      "token_usage": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "estimated_cost_usd": 0.0
+      },
+      "input_summary": "Task: Summarize best practices for structured JSON logging in Python-based AI agent pipelines, focusing on correlation IDs, token tracking, and surfacing run-level vs. agent-level events in an overnig",
+      "output_summary": "Route to research, obsidian"
+    },
+    {
+      "timestamp": "2026-06-19T16:12:12.534535Z",
+      "run_id": "708c5f21-4069-464b-ae9d-5773b9725a3d",
+      "trace_id": "d0b139fd-9074-4369-ba61-1117c6c55b33",
+      "agent_name": "research",
+      "agent_version": "1.0.0",
+      "status": "success",
+      "latency_ms": 1,
+      "token_usage": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "estimated_cost_usd": 0.0
+      },
+      "input_summary": "Task: Summarize best practices for structured JSON logging in Python-based AI agent pipelines, focusing on correlation IDs, token tracking, and surfacing run-level vs. agent-level events in an overnig",
+      "output_summary": "6 words. Cache hit: False.",
+      "confidence_score": 0.82,
+      "validation_pass": true,
+      "retry_count": 1,
+      "skip_reason": null,
+      "escalation_flag": false,
+      "human_review_required": false,
+      "partial_run": false
+    },
+    {
+      "timestamp": "2026-06-19T16:12:12.537923Z",
+      "run_id": "708c5f21-4069-464b-ae9d-5773b9725a3d",
+      "trace_id": "d0b139fd-9074-4369-ba61-1117c6c55b33",
+      "agent_name": "obsidian_writer",
+      "agent_version": "1.0.0",
+      "status": "success",
+      "latency_ms": 0,
+      "token_usage": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "estimated_cost_usd": 0.0
+      },
+      "input_summary": "TaskResult with 2 prior agent runs.",
+      "output_summary": "Wrote task record and digest. Notes updated: 4.",
+      "confidence_score": 0.82,
+      "validation_pass": true,
+      "retry_count": 1,
+      "skip_reason": null,
+      "escalation_flag": false,
+      "human_review_required": false,
+      "partial_run": false
+    }
+  ]
+}

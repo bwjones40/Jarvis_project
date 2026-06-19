@@ -47,8 +47,6 @@ build/
 # Claude Code session artifacts
 .claude/settings.local.json
 
-# Jarvis runtime logs
-jarvis/logs/
 
 # Local verification artifacts
 /phase2-verification-runbook.html

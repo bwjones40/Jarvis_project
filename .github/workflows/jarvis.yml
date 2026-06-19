@@ -67,12 +67,13 @@ jobs:
           POWER_AUTOMATE_WEBHOOK_URL: ${{ secrets.POWER_AUTOMATE_WEBHOOK_URL }}
         run: python orchestrator/main.py
 
-      - name: Commit cleared inbox
+      - name: Commit cleared inbox and run logs
         run: |
           git add jarvis/inbox.md
           if [ -f jarvis/usage-history.json ]; then
             git add jarvis/usage-history.json
           fi
+          git add jarvis/logs/ 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "Inbox unchanged; nothing to commit."
             exit 0
@@ -119,3 +120,15 @@ jobs:
         env:
           POWER_AUTOMATE_WEBHOOK_URL: ${{ secrets.POWER_AUTOMATE_WEBHOOK_URL }}
         run: python orchestrator/main.py --mode stats_report
+
+      - name: Commit stats output
+        run: |
+          git add jarvis/ci/ 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No stats output to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "jarvis: stats report [jarvis-skip]"
+          git push
