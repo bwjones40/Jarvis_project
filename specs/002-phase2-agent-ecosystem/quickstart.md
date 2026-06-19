@@ -209,39 +209,54 @@ PY
 
 ### Scenario 2B: Forced retry and skip
 
-**Steps**:
-1. Set `JARVIS_VALIDATION_OVERRIDE_SCORE=0.45` in your local environment
-2. Run `python orchestrator/main.py --dry-run`
-3. Check output
+Run locally without `--dry-run`. Since `POWER_AUTOMATE_WEBHOOK_URL` is not set locally, nothing posts to SharePoint. Check `jarvis/logs/{today}/{run_id}.json` after each run.
 
-**Expected outcome**:
-- `research` entry in log: `status: skipped`, `escalation_flag: true`, `retry_count: 1`, `confidence_score: 0.45`
-- `obsidian_writer` entry: same pattern
-- `overall_status: partial`
-- Run did NOT halt — pipeline completed
+**Sub-scenario 2B-low — immediate skip (score below skip_threshold)**
 
-Then test mid-range (retry accepted):
+```powershell
+$env:JARVIS_VALIDATION_OVERRIDE_SCORE = "0.45"
+python orchestrator/main.py
+Remove-Item Env:\JARVIS_VALIDATION_OVERRIDE_SCORE
+```
 
-1. Set `JARVIS_VALIDATION_OVERRIDE_SCORE=0.82`
-2. Run `python orchestrator/main.py --dry-run`
+**Expected outcome** in the JSON log for `research` and `obsidian_writer` entries:
+- `confidence_score: 0.45`
+- `escalation_flag: true`
+- `validation_pass: false`
+- `retry_count: 0` — score is below `skip_threshold` (0.60), so no retry is attempted
+- `skip_reason: "validation_score_below_skip_threshold"`
+- `clarifications_needed` contains `[HUMAN REVIEW REQUIRED]` entries
 
-**Expected outcome**:
-- `retry_count: 1`, `confidence_score: 0.82`, `validation_pass: true`, `status: success`
-- Run completes normally
+In `run.overall_status`: `partial` (also visible as `status: "partial"` in stdout task_result)
+
+**Sub-scenario 2B-mid — retry zone (score triggers retry, retry accepted)**
+
+```powershell
+$env:JARVIS_VALIDATION_OVERRIDE_SCORE = "0.82"
+python orchestrator/main.py
+Remove-Item Env:\JARVIS_VALIDATION_OVERRIDE_SCORE
+```
+
+**Expected outcome** in the JSON log:
+- `retry_count: 1` — score (0.82) is in range `[retry_min_threshold, pass_threshold)` so one retry fires
+- `confidence_score: 0.82`
+- `validation_pass: true` — retry score meets `retry_accept_threshold` (0.80)
+- `escalation_flag: false`
+- `run.overall_status: completed`
 
 ---
 
 ### Scenario 2C: Validation Agent crash
 
-**Steps**:
-1. Temporarily set `ANTHROPIC_API_KEY` to an invalid value in your local environment
-2. Run `python orchestrator/main.py --dry-run`
-3. Check log output
+Setting `ANTHROPIC_API_KEY` to an invalid value does **not** isolate the crash to the Validation Agent — it also breaks `research.py`, which would crash the pipeline before validation runs. Test this scenario via the unit test that covers it directly:
 
-**Expected outcome**:
-- Research and obsidian_writer outputs treated as passing (`confidence_score: 0.90`, `notes` contains "SYNTHETIC")
-- A separate log entry for `validation` with `status: failed`
-- Run completed normally — pipeline was NOT halted
+```powershell
+python -m unittest tests.test_validation.ValidationAgentTests.test_synthetic_pass_on_crash -v
+```
+
+**Expected outcome**: `test_synthetic_pass_on_crash ... ok`
+
+This test patches the Anthropic client to raise an exception inside `score_output` and confirms that `confidence_score` falls back to `0.90` with `notes` containing `"SYNTHETIC"` — matching the intended crash-recovery behavior.
 
 **Regression check**: Digest still produced; task record still written; no exception propagated to main process.
 
