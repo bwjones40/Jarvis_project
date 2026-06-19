@@ -110,5 +110,13 @@
     "input_tokens": 0,
     "output_tokens": 0,
     "estimated_cost": 0.0
+  },
+  {
+    "task_id": "task-27826403060-testing-node-js-20-deprecation-warning",
+    "run_timestamp": "2026-06-19T12:43:45Z",
+    "status": "partial",
+    "input_tokens": 1955,
+    "output_tokens": 2131,
+    "estimated_cost": 0.0335
   }
 ]

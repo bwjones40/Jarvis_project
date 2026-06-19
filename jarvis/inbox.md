@@ -1,6 +1,6 @@
 # Jarvis Inbox
 
-## Task: Testing Node.js 20 Deprecation Warning
+## Task: Replace this title before commit
 **Priority**: medium
 **Mode**: overnight
 **Agents needed**: orchestrator, research, obsidian
