@@ -32,7 +32,8 @@
 | `orchestrator/agents/gcp_discovery.py` | Daytime-only BigQuery metadata discovery through local `bq` CLI. Lists datasets/tables and summarizes read-only findings. | Implemented with environmental dependencies | High | `orchestrator/agents/gcp_discovery.py` |
 | `orchestrator/agents/obsidian_writer.py` | Builds task records, daily digest, weekly cost rollup, lesson files, knowledge-note updates, and draft communication sections. | Implemented MVP | High | `orchestrator/agents/obsidian_writer.py` |
 | `orchestrator/utils/inbox_parser.py` | Parses the markdown inbox contract and treats cleared template as no-task state. | Implemented MVP | High | `tests/test_inbox_parser.py` |
-| `orchestrator/utils/power_automate.py` | Posts a batch of vault file payloads; retries 429/5xx and network errors; writes `jarvis/run-errors.log` on failure. | Implemented, external dependency | High | `tests/test_power_automate.py` |
+| `orchestrator/utils/power_automate.py` | Posts a batch of vault file payloads; retries 429/5xx and network errors; writes `jarvis/run-errors.log` on failure. Callers must pass explicit `{"vault_path": "<repo-relative>", "content": "..."}` dicts — raw `Path` objects will emit absolute paths. | Implemented, external dependency | High | `tests/test_power_automate.py` |
+| `orchestrator/agents/stats_reporter.py` | Aggregates per-agent run logs from `jarvis/logs/`, computes success rate/latency/cost, writes `jarvis/ci/stats_YYYY-MM-DD.md` and `.json`, and posts both to Power Automate via explicit vault-relative paths. Triggered by `--mode stats_report`. | Implemented | High | `tests/test_stats_reporter.py`, `orchestrator/main.py` |
 | `orchestrator/utils/pii_guard.py` | Regex PII helper with `strict`, `standard`, and `off` modes. | Partial and compliance-sensitive | High | `tests/test_pii_guard.py` |
 | `orchestrator/utils/token_logger.py` | AgentRun formatting and estimated Claude cost calculation. | Implemented for zero-token deterministic runs | High | `tests/test_orchestrator.py`, `tests/test_obsidian_writer.py` |
 | `orchestrator/utils/vault_reader.py` | Local markdown note existence, read, and keyword search. | Minimal | Medium | `orchestrator/utils/vault_reader.py` |
@@ -59,6 +60,7 @@
 - [Confirmed] Token usage table and estimated cost display in task output, plus weekly digest rollup based on task files. Evidence: `orchestrator/agents/obsidian_writer.py`.
 - [Confirmed] Configurable PII modes: `strict`, `standard`, `off`. Evidence: `orchestrator/utils/pii_guard.py`, `config/settings.yaml`, `tests/test_pii_guard.py`.
 - [Confirmed] GCP fixes for Windows `bq.cmd`, `--project_id`, schema lookup failures, and empty/non-JSON table-list responses are covered by tests. Evidence: `tests/test_gcp_discovery.py`.
+- [Confirmed] Stats report mode (`--mode stats_report`) aggregates `jarvis/logs/` run data, writes `jarvis/ci/stats_YYYY-MM-DD.{md,json}`, and posts to Power Automate using vault-relative `vault_dir` parameter so CI runner absolute paths are never sent as `vault_path`. Evidence: `orchestrator/agents/stats_reporter.py`, `orchestrator/main.py`, `tests/test_stats_reporter.py`.
 
 ### Partially Implemented
 
@@ -246,6 +248,7 @@ Recommended Validation Step: Before sensitive runs, set `pii.mode: strict` and r
 - `obsidian_writer.py` mutates `task_result` while rendering outputs.
 - `pii_guard.py` affects every agent and all vault text rendering.
 - Power Automate path handling is outside version control but critical to output correctness.
+- `power_automate.post_files()` raw-Path overload is a footgun: it calls `as_posix()` on the Path, which emits an absolute path when the caller holds an absolute Path. Any new agent posting files must pass explicit `{"vault_path": "<repo-relative>", "content": "..."}` dicts. Evidence: `orchestrator/utils/power_automate.py:77`, learning log entry "Stats Reporter Sent Absolute CI Runner Path as `vault_path`".
 
 ## 8. Assumptions
 

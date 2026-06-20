@@ -52,9 +52,11 @@ def main(argv: list[str] | None = None) -> int:
     settings = load_settings(repo_root / "config" / "settings.yaml")
     if args.mode == "stats_report":
         logging_settings = settings.get("logging", {})
+        stats_dir_rel = logging_settings.get("stats_dir", "jarvis/ci")
         stats_reporter.run_stats_report(
             log_dir=str(repo_root / logging_settings.get("log_dir", "jarvis/logs")),
-            stats_dir=str(repo_root / logging_settings.get("stats_dir", "jarvis/ci")),
+            stats_dir=str(repo_root / stats_dir_rel),
+            vault_dir=stats_dir_rel,
             webhook_url=os.getenv("POWER_AUTOMATE_WEBHOOK_URL", "").strip() or None,
         )
         return 0

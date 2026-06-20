@@ -194,6 +194,22 @@ Prevention Guidance: After changing PII mode, search full run output and vault f
 
 Confidence Level: High.
 
+### Stats Reporter Sent Absolute CI Runner Path as `vault_path`
+
+Error / Issue / Fragile Pattern: Power Automate `Create file` failed because `folderPath` contained the full GitHub Actions runner path (`/home/runner/work/Jarvis_project/Jarvis_project/jarvis/ci`) embedded inside the SharePoint library path.
+
+Evidence: Power Automate run result showing `folderPath` value `/Files/Analytics/Braden/Obsidian/AIOps_Vault//home/runner/work/Jarvis_project/Jarvis_project/jarvis/ci` and a `Get file metadata using path` condition step failing to find the file. User-provided run JSON from 2026-06-20.
+
+Context: `main.py` computes `stats_dir` as `str(repo_root / stats_dir_rel)`, which is an absolute path. `run_stats_report()` created `markdown_path` and `json_path` as absolute `Path` objects and passed them directly to `post_files()`. In `_normalize_files()`, the `Path` branch called `file_path.as_posix()`, emitting the full absolute path as `vault_path`. Power Automate's `concat()` expression appended it to the SharePoint base path verbatim.
+
+Likely Root Cause: `post_files()` was designed to accept raw Path objects and derive `vault_path` from them, but it had no way to know the repo root boundary — so it emitted absolute paths unchanged.
+
+Current Status: Fixed by adding a `vault_dir` parameter to `run_stats_report()`. `main.py` now captures `stats_dir_rel` (e.g. `"jarvis/ci"`) before joining with `repo_root` and passes it as `vault_dir`. The `post_files()` call in `stats_reporter.py` now sends explicit dicts with `vault_path: "jarvis/ci/stats_YYYY-MM-DD.md"` instead of raw paths. Evidence: `orchestrator/agents/stats_reporter.py`, `orchestrator/main.py`.
+
+Prevention Guidance: Never pass absolute `Path` objects to `post_files()`. Always pass explicit `{"vault_path": "<repo-relative-path>", "content": "..."}` dicts when the caller holds an absolute path. The raw-Path overload in `_normalize_files()` is only safe when Jarvis is invoked from the repo root and all paths are relative from the start.
+
+Confidence Level: High.
+
 ### GitHub Actions Bot Commit Caused Rejected Pushes
 
 Error / Issue / Fragile Pattern: `git push origin main` repeatedly failed with `fetch first` or `non-fast-forward` after Jarvis validation runs.

@@ -10,7 +10,7 @@ from uuid import uuid4
 from orchestrator.utils.power_automate import post_files
 
 
-def run_stats_report(log_dir: str, stats_dir: str, webhook_url: str = None) -> None:
+def run_stats_report(log_dir: str, stats_dir: str, webhook_url: str = None, vault_dir: str = None) -> None:
     window_start = _find_window_start(stats_dir)
     window_end = _utc_now()
     log_root = Path(log_dir)
@@ -51,8 +51,12 @@ def run_stats_report(log_dir: str, stats_dir: str, webhook_url: str = None) -> N
     markdown_path.write_text(_build_markdown_report(stats_payload), encoding="utf-8")
 
     if webhook_url:
+        vd = vault_dir or stats_root.as_posix()
         post_files(
-            [markdown_path, json_path],
+            [
+                {"vault_path": f"{vd}/{markdown_path.name}", "content": markdown_path.read_text(encoding="utf-8")},
+                {"vault_path": f"{vd}/{json_path.name}", "content": json_path.read_text(encoding="utf-8")},
+            ],
             {
                 "task_id": "stats-report",
                 "run_timestamp": window_end,
