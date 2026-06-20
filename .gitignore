@@ -47,6 +47,9 @@ build/
 # Claude Code session artifacts
 .claude/settings.local.json
 
+# Local-only learning log (not tracked on GitHub)
+docs/jarvis-learning-log.md
+
 
 # Local verification artifacts
 /phase2-verification-runbook.html
