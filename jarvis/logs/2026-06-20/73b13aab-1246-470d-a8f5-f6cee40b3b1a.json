@@ -1,0 +1,81 @@
+{
+  "run": {
+    "run_id": "73b13aab-1246-470d-a8f5-f6cee40b3b1a",
+    "trace_id": "2fce32ef-a161-421e-ba0e-41fe42dde0b6",
+    "workflow_id": "jarvis",
+    "trigger_source": "inbox_push",
+    "task_id": "task-27874838121-summarize-key-ai-orchestration-patterns-",
+    "started_at": "2026-06-20T15:01:12.559603Z",
+    "completed_at": "2026-06-20T15:02:50.495398Z",
+    "overall_status": "partial"
+  },
+  "agents": [
+    {
+      "timestamp": "2026-06-20T15:01:12.560407Z",
+      "run_id": "73b13aab-1246-470d-a8f5-f6cee40b3b1a",
+      "trace_id": "2fce32ef-a161-421e-ba0e-41fe42dde0b6",
+      "agent_name": "orchestrator",
+      "agent_version": "1.0.0",
+      "status": "success",
+      "latency_ms": 0,
+      "token_usage": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "estimated_cost_usd": 0.0
+      },
+      "input_summary": "Task: Research and summarize the key architectural patterns used in production multi-agent AI orchestration systems. Focus on: (1) how agents hand off context between steps, (2) how validation and ret",
+      "output_summary": "Route to research, obsidian"
+    },
+    {
+      "timestamp": "2026-06-20T15:01:38.158563Z",
+      "run_id": "73b13aab-1246-470d-a8f5-f6cee40b3b1a",
+      "trace_id": "2fce32ef-a161-421e-ba0e-41fe42dde0b6",
+      "agent_name": "research",
+      "agent_version": "1.0.0",
+      "status": "success",
+      "latency_ms": 10279,
+      "token_usage": {
+        "input": 251,
+        "output": 957,
+        "total": 1208,
+        "estimated_cost_usd": 0.004
+      },
+      "input_summary": "Task: Research and summarize the key architectural patterns used in production multi-agent AI orchestration systems. Focus on: (1) how agents hand off context between steps, (2) how validation and ret",
+      "output_summary": "435 words. Cache hit: False.",
+      "confidence_score": 0.785,
+      "validation_pass": false,
+      "retry_count": 1,
+      "skip_reason": "validation_score_below_retry_accept_threshold",
+      "escalation_flag": true,
+      "human_review_required": true,
+      "partial_run": true,
+      "error_type": "validation_fail"
+    },
+    {
+      "timestamp": "2026-06-20T15:02:50.495086Z",
+      "run_id": "73b13aab-1246-470d-a8f5-f6cee40b3b1a",
+      "trace_id": "2fce32ef-a161-421e-ba0e-41fe42dde0b6",
+      "agent_name": "obsidian_writer",
+      "agent_version": "1.0.0",
+      "status": "success",
+      "latency_ms": 0,
+      "token_usage": {
+        "input": 3292,
+        "output": 2048,
+        "total": 5340,
+        "estimated_cost_usd": 0.0406
+      },
+      "input_summary": "TaskResult with 2 prior agent runs.",
+      "output_summary": "Wrote task record and digest. Notes updated: 4.",
+      "confidence_score": 0.702,
+      "validation_pass": false,
+      "retry_count": 1,
+      "skip_reason": "validation_score_below_retry_accept_threshold",
+      "escalation_flag": true,
+      "human_review_required": true,
+      "partial_run": true,
+      "error_type": "validation_fail"
+    }
+  ]
+}

@@ -142,5 +142,13 @@
     "input_tokens": 2678,
     "output_tokens": 2922,
     "estimated_cost": 0.0417
+  },
+  {
+    "task_id": "task-27874838121-summarize-key-ai-orchestration-patterns-",
+    "run_timestamp": "2026-06-20T15:01:12Z",
+    "status": "partial",
+    "input_tokens": 3543,
+    "output_tokens": 3005,
+    "estimated_cost": 0.0446
   }
 ]
