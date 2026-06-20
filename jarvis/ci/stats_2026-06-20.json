@@ -1,8 +1,8 @@
 {
-  "stats_run_id": "bb241ca6-e6a4-4edf-a106-db4a290d816f",
-  "run_date": "2026-06-20T18:17:01.664073Z",
-  "analysis_window_start": "2026-06-20T16:43:22.803856Z",
-  "analysis_window_end": "2026-06-20T18:17:01.664073Z",
+  "stats_run_id": "a048767c-ac34-4f4a-ab2f-fd5238d274ec",
+  "run_date": "2026-06-20T18:50:26.606354Z",
+  "analysis_window_start": "2026-06-20T18:17:01.664073Z",
+  "analysis_window_end": "2026-06-20T18:50:26.606354Z",
   "total_runs_analyzed": 2,
   "total_agent_executions": 6,
   "agent_stats": [
