@@ -124,7 +124,7 @@ def _build_markdown_report(stats_payload: dict[str, Any]) -> str:
         [
             f"# Jarvis Stats Report — {stats_payload['run_date'][:10]}",
             "",
-            f"**Analysis window**: {stats_payload['analysis_window_start']} → {stats_payload['analysis_window_end']}",
+            f"**Analysis window**: {stats_payload['analysis_window_start'] or 'all time'} → {stats_payload['analysis_window_end']}",
             f"**Runs analyzed**: {stats_payload['total_runs_analyzed']}",
             f"**Total agent executions**: {stats_payload['total_agent_executions']}",
             "",
