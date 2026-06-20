@@ -1,5 +1,6 @@
 import unittest
 import json
+from datetime import date, timedelta
 from pathlib import Path
 from uuid import uuid4
 import shutil
@@ -230,13 +231,17 @@ class ObsidianWriterTests(unittest.TestCase):
         self.assertIn("Last 7 days estimated cost", digest["content"])
 
     def test_digest_weekly_rollup_sums_three_task_records(self) -> None:
+        today = date.today()
+        date_a = (today - timedelta(days=5)).isoformat()
+        date_b = (today - timedelta(days=4)).isoformat()
+        date_current = (today - timedelta(days=3)).isoformat()
         vault_root = self._make_temp_vault()
         tasks_dir = vault_root / "jarvis" / "tasks"
         tasks_dir.mkdir(parents=True)
         (tasks_dir / "task-001-prior-a.md").write_text(
             "\n".join(
                 [
-                    "**Run**: 2026-06-13T00:00:00Z",
+                    f"**Run**: {date_a}T00:00:00Z",
                     "| **Total** |  | **100** | **50** | **1.0s** |",
                     "**Estimated cost**: $0.01",
                 ]
@@ -246,7 +251,7 @@ class ObsidianWriterTests(unittest.TestCase):
         (tasks_dir / "task-001-prior-b.md").write_text(
             "\n".join(
                 [
-                    "**Run**: 2026-06-14T00:00:00Z",
+                    f"**Run**: {date_b}T00:00:00Z",
                     "| **Total** |  | **200** | **70** | **1.0s** |",
                     "**Estimated cost**: $0.02",
                 ]
@@ -256,7 +261,7 @@ class ObsidianWriterTests(unittest.TestCase):
         task_result = {
             "task_id": "task-001-current",
             "task_title": "Current",
-            "run_timestamp": "2026-06-15T00:00:00Z",
+            "run_timestamp": f"{date_current}T00:00:00Z",
             "mode": "overnight",
             "status": "completed",
             "agents_executed": [
@@ -290,6 +295,10 @@ class ObsidianWriterTests(unittest.TestCase):
         self.assertIn("Task records counted: 3", digest["content"])
 
     def test_digest_weekly_rollup_uses_persisted_usage_history(self) -> None:
+        today = date.today()
+        date_a = (today - timedelta(days=5)).isoformat()
+        date_b = (today - timedelta(days=4)).isoformat()
+        date_current = (today - timedelta(days=3)).isoformat()
         vault_root = self._make_temp_vault()
         history_path = vault_root / "jarvis" / "usage-history.json"
         history_path.parent.mkdir(parents=True)
@@ -298,14 +307,14 @@ class ObsidianWriterTests(unittest.TestCase):
                 [
                     {
                         "task_id": "task-001-prior-a",
-                        "run_timestamp": "2026-06-13T00:00:00Z",
+                        "run_timestamp": f"{date_a}T00:00:00Z",
                         "input_tokens": 100,
                         "output_tokens": 50,
                         "estimated_cost": 0.01,
                     },
                     {
                         "task_id": "task-001-prior-b",
-                        "run_timestamp": "2026-06-14T00:00:00Z",
+                        "run_timestamp": f"{date_b}T00:00:00Z",
                         "input_tokens": 200,
                         "output_tokens": 70,
                         "estimated_cost": 0.02,
@@ -317,7 +326,7 @@ class ObsidianWriterTests(unittest.TestCase):
         task_result = {
             "task_id": "task-001-current",
             "task_title": "Current",
-            "run_timestamp": "2026-06-15T00:00:00Z",
+            "run_timestamp": f"{date_current}T00:00:00Z",
             "mode": "overnight",
             "status": "completed",
             "agents_executed": [
