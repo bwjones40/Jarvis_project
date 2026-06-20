@@ -1,14 +1,14 @@
 {
-  "stats_run_id": "832bde4e-25a4-45d3-9540-8147cbdbb563",
-  "run_date": "2026-06-20T15:04:56.169004Z",
-  "analysis_window_start": "2026-06-20T14:08:14.494234Z",
-  "analysis_window_end": "2026-06-20T15:04:56.169004Z",
-  "total_runs_analyzed": 5,
-  "total_agent_executions": 15,
+  "stats_run_id": "d650df0c-d064-4524-92db-9eb26a97effb",
+  "run_date": "2026-06-20T15:07:18.635914Z",
+  "analysis_window_start": "2026-06-20T15:04:56.169004Z",
+  "analysis_window_end": "2026-06-20T15:07:18.635914Z",
+  "total_runs_analyzed": 2,
+  "total_agent_executions": 6,
   "agent_stats": [
     {
       "agent_name": "gcp_discovery",
-      "run_count": 2,
+      "run_count": 1,
       "success_rate": 1.0,
       "avg_latency_ms": 100,
       "avg_tokens_per_run": 0,
@@ -18,18 +18,18 @@
     },
     {
       "agent_name": "obsidian_writer",
-      "run_count": 3,
+      "run_count": 1,
       "success_rate": 1.0,
-      "avg_latency_ms": 67,
-      "avg_tokens_per_run": 1780,
-      "total_cost_usd": 0.0406,
-      "retry_count": 1,
-      "escalation_count": 1,
-      "avg_confidence_score": 0.8673
+      "avg_latency_ms": 100,
+      "avg_tokens_per_run": 0,
+      "total_cost_usd": 0.0,
+      "retry_count": 0,
+      "escalation_count": 0,
+      "avg_confidence_score": 0.95
     },
     {
       "agent_name": "orchestrator",
-      "run_count": 9,
+      "run_count": 4,
       "success_rate": 1.0,
       "avg_latency_ms": 0,
       "avg_tokens_per_run": 0,
@@ -37,17 +37,6 @@
       "retry_count": 0,
       "escalation_count": 0,
       "avg_confidence_score": 0.9
-    },
-    {
-      "agent_name": "research",
-      "run_count": 1,
-      "success_rate": 1.0,
-      "avg_latency_ms": 10279,
-      "avg_tokens_per_run": 1208,
-      "total_cost_usd": 0.004,
-      "retry_count": 1,
-      "escalation_count": 1,
-      "avg_confidence_score": 0.785
     }
   ]
 }
