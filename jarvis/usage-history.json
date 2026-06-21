@@ -158,5 +158,13 @@
     "input_tokens": 2239,
     "output_tokens": 1892,
     "estimated_cost": 0.0318
+  },
+  {
+    "task_id": "task-27911828968-bigquery-cost-control-best-practices",
+    "run_timestamp": "2026-06-21T17:20:49Z",
+    "status": "completed",
+    "input_tokens": 2573,
+    "output_tokens": 2154,
+    "estimated_cost": 0.0343
   }
 ]

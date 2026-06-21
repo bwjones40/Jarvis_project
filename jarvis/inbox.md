@@ -1,16 +1,16 @@
 # Jarvis Inbox
 
-## Task: BigQuery cost-control best practices
+## Task: Replace this title before commit
 **Priority**: medium
 **Mode**: overnight
 **Agents needed**: orchestrator, research, obsidian
 **Due**: next run
 
 ### Request
-Explain three general best practices for controlling BigQuery query costs, and give one concrete implementation step for each. Answer from general engineering knowledge — no account-specific data required.
+Describe the task Jarvis should complete before the next run.
 
 ### Context
-Non-PII, general guidance only. This is a self-contained question answerable without proprietary billing data, so the answer should be complete and actionable on its own.
+Optional project context, links, or non-PII background.
 
 ### Copilot handoff
 Optional manual handoff instructions for Copilot.
