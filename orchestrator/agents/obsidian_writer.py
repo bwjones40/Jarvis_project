@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from time import sleep
@@ -529,23 +530,35 @@ def _build_obsidian_writer_payload(
 
 
 def _call_obsidian_writer_model(prompt_text: str) -> Any | None:
+    """Call the writer model, degrading to ``None`` instead of raising.
+
+    The caller treats ``None`` as a graceful fallback (a deterministic vault
+    output), so a transient outage or a bad/expired API key never halts the
+    pipeline. Auth/permission failures skip the retry since they will not clear.
+    """
     if client is None or anthropic is None:
         return None
-    try:
+
+    def _create() -> Any:
         return client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=2048,
             system=OBSIDIAN_WRITER_PROMPT,
             messages=[{"role": "user", "content": prompt_text}],
         )
+
+    try:
+        return _create()
+    except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as exc:
+        warnings.warn(f"Obsidian writer model call failed (auth/permission); using degraded fallback: {exc}")
+        return None
     except anthropic.APIError:
         sleep(10)
-        return client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=2048,
-            system=OBSIDIAN_WRITER_PROMPT,
-            messages=[{"role": "user", "content": prompt_text}],
-        )
+        try:
+            return _create()
+        except anthropic.APIError as exc:
+            warnings.warn(f"Obsidian writer model call failed after retry; using degraded fallback: {exc}")
+            return None
 
 
 def _extract_response_text(content: Any) -> str:

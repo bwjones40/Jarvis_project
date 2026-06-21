@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from pathlib import Path
 from time import perf_counter, sleep
 from typing import Any
@@ -86,23 +87,36 @@ def _cap_note_content(content: str, max_tokens: int) -> str:
 
 
 def _call_research_model(prompt_text: str) -> Any | None:
+    """Call the research model, degrading to ``None`` instead of raising.
+
+    A ``None`` return is handled by the caller as a graceful fallback (a summary
+    built from vault note titles), so a transient outage or a bad/expired API key
+    never halts the pipeline. Auth/permission failures skip the retry since they
+    will not clear on their own.
+    """
     if client is None or anthropic is None:
         return None
-    try:
+
+    def _create() -> Any:
         return client.messages.create(
             model="claude-haiku-4-5",
             max_tokens=1024,
             system=RESEARCH_PROMPT,
             messages=[{"role": "user", "content": prompt_text}],
         )
+
+    try:
+        return _create()
+    except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as exc:
+        warnings.warn(f"Research model call failed (auth/permission); using degraded fallback: {exc}")
+        return None
     except anthropic.APIError:
         sleep(10)
-        return client.messages.create(
-            model="claude-haiku-4-5",
-            max_tokens=1024,
-            system=RESEARCH_PROMPT,
-            messages=[{"role": "user", "content": prompt_text}],
-        )
+        try:
+            return _create()
+        except anthropic.APIError as exc:
+            warnings.warn(f"Research model call failed after retry; using degraded fallback: {exc}")
+            return None
 
 
 def _extract_response_text(content: Any) -> str:
