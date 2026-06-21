@@ -1,0 +1,72 @@
+{
+  "run": {
+    "run_id": "0632afed-c1b9-4086-b096-a7b2d586253c",
+    "trace_id": "fd595147-c812-42fb-a9be-1bcf4468f70b",
+    "workflow_id": "jarvis",
+    "trigger_source": "workflow_dispatch",
+    "task_id": "task-27911024526-daytime-gcp-discovery",
+    "started_at": "2026-06-21T16:49:45.883794Z",
+    "completed_at": "2026-06-21T16:49:45.885190Z",
+    "overall_status": "completed"
+  },
+  "agents": [
+    {
+      "timestamp": "2026-06-21T16:49:45.884244Z",
+      "run_id": "0632afed-c1b9-4086-b096-a7b2d586253c",
+      "trace_id": "fd595147-c812-42fb-a9be-1bcf4468f70b",
+      "agent_name": "orchestrator",
+      "agent_version": "1.0.0",
+      "status": "success",
+      "latency_ms": 0,
+      "token_usage": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "estimated_cost_usd": 0.0
+      },
+      "input_summary": "Task: List all BigQuery datasets in the non-prod environment",
+      "output_summary": "Route to gcp, obsidian"
+    },
+    {
+      "timestamp": "2026-06-21T16:49:45.884476Z",
+      "run_id": "0632afed-c1b9-4086-b096-a7b2d586253c",
+      "trace_id": "fd595147-c812-42fb-a9be-1bcf4468f70b",
+      "agent_name": "orchestrator",
+      "agent_version": "1.0.0",
+      "status": "success",
+      "latency_ms": 0,
+      "token_usage": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "estimated_cost_usd": 0.0
+      },
+      "input_summary": "Task: List all BigQuery datasets in the non-prod environment",
+      "output_summary": "Route to gcp, obsidian"
+    },
+    {
+      "timestamp": "2026-06-21T16:49:45.884884Z",
+      "run_id": "0632afed-c1b9-4086-b096-a7b2d586253c",
+      "trace_id": "fd595147-c812-42fb-a9be-1bcf4468f70b",
+      "agent_name": "orchestrator",
+      "agent_version": "1.0.0",
+      "status": "success",
+      "latency_ms": 0,
+      "token_usage": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "estimated_cost_usd": 0.0
+      },
+      "input_summary": "Task: List all BigQuery datasets in the non-prod environment",
+      "output_summary": "Route to gcp, obsidian",
+      "confidence_score": 0.9,
+      "validation_pass": true,
+      "retry_count": 0,
+      "skip_reason": null,
+      "escalation_flag": false,
+      "human_review_required": false,
+      "partial_run": false
+    }
+  ]
+}
