@@ -35,6 +35,8 @@ jarvis/digests/
 jarvis/agents/
 jarvis/knowledge/
 jarvis/test.md
+jarvis/logs
+jarvis/specs
 
 # Coverage and build artifacts
 .coverage
