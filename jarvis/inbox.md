@@ -1,16 +1,16 @@
 # Jarvis Inbox
 
-## Task: Q1 GCP cost drivers summary
+## Task: Replace this title before commit
 **Priority**: medium
 **Mode**: overnight
 **Agents needed**: orchestrator, research, obsidian
 **Due**: next run
 
 ### Request
-Summarize the three largest GCP cost drivers in Q1 and recommend one concrete action to reduce each.
+Describe the task Jarvis should complete before the next run.
 
 ### Context
-Non-PII background only. Focus on service-level cost categories (compute, storage, BigQuery) rather than any account or user identifiers.
+Optional project context, links, or non-PII background.
 
 ### Copilot handoff
 Optional manual handoff instructions for Copilot.

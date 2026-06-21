@@ -150,5 +150,13 @@
     "input_tokens": 3543,
     "output_tokens": 3005,
     "estimated_cost": 0.0446
+  },
+  {
+    "task_id": "task-27911296912-q1-gcp-cost-drivers-summary",
+    "run_timestamp": "2026-06-21T17:00:06Z",
+    "status": "partial",
+    "input_tokens": 2239,
+    "output_tokens": 1892,
+    "estimated_cost": 0.0318
   }
 ]
