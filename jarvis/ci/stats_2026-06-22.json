@@ -1,0 +1,42 @@
+{
+  "stats_run_id": "8ac45240-40f4-4eb0-be3b-1d5381f7e89e",
+  "run_date": "2026-06-22T00:05:22.017764Z",
+  "analysis_window_start": "2026-06-20T22:11:38.591229Z",
+  "analysis_window_end": "2026-06-22T00:05:22.017764Z",
+  "total_runs_analyzed": 4,
+  "total_agent_executions": 12,
+  "agent_stats": [
+    {
+      "agent_name": "gcp_discovery",
+      "run_count": 2,
+      "success_rate": 1.0,
+      "avg_latency_ms": 100,
+      "avg_tokens_per_run": 0,
+      "total_cost_usd": 0.0,
+      "retry_count": 0,
+      "escalation_count": 0
+    },
+    {
+      "agent_name": "obsidian_writer",
+      "run_count": 2,
+      "success_rate": 1.0,
+      "avg_latency_ms": 100,
+      "avg_tokens_per_run": 0,
+      "total_cost_usd": 0.0,
+      "retry_count": 0,
+      "escalation_count": 0,
+      "avg_confidence_score": 0.95
+    },
+    {
+      "agent_name": "orchestrator",
+      "run_count": 8,
+      "success_rate": 1.0,
+      "avg_latency_ms": 0,
+      "avg_tokens_per_run": 0,
+      "total_cost_usd": 0.0,
+      "retry_count": 0,
+      "escalation_count": 0,
+      "avg_confidence_score": 0.9
+    }
+  ]
+}
